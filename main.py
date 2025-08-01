@@ -1571,7 +1571,6 @@ def render_feishu_content(
         sequence_display = f"[{i + 1}/{total_count}]"
 
         if count >= 10:
-            """text_content += f"🔥 {sequence_display} **{word}** : <font color='red'>{count}</font> 条\n\n""""
             text_content += f"🔥 {sequence_display} **{word}** : {count} 条\n\n"
         elif count >= 5:
             text_content += f"📈 {sequence_display} **{word}** : {count} 条\n\n"
