@@ -1252,9 +1252,9 @@ def format_title_for_platform(
         if rank_display:
             result += f" {rank_display}"
         if title_data["time_display"]:
-            result += f" <font color='grey'>- {title_data['time_display']}</font>"
+            result += f" - {title_data['time_display']}"
         if title_data["count"] > 1:
-            result += f" <font color='green'>({title_data['count']}次)</font>"
+            result += f" ({title_data['count']}次)"
 
         return result
 
