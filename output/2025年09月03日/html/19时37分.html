@@ -1,0 +1,135 @@
+
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>频率词统计报告</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            h1, h2 { color: #333; }
+            table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #f2f2f2; }
+            tr:nth-child(even) { background-color: #f9f9f9; }
+            .word { font-weight: bold; }
+            .count { text-align: center; }
+            .percentage { text-align: center; }
+            .titles { max-width: 500px; }
+            .source { color: #666; font-style: italic; }
+            .error { color: #d9534f; }
+            .news-link { 
+                color: #007bff; 
+                text-decoration: none; 
+                border-bottom: 1px dotted #007bff;
+            }
+            .news-link:hover { 
+                color: #0056b3; 
+                text-decoration: underline; 
+            }
+            .news-link:visited { 
+                color: #6f42c1; 
+            }
+            .no-link { 
+                color: #333; 
+            }
+            .new-title {
+                background-color: #fff3cd;
+                border: 1px solid #ffc107;
+                border-radius: 3px;
+                padding: 2px 6px;
+                margin: 2px 0;
+            }
+            .new-section {
+                background-color: #d1ecf1;
+                border: 1px solid #bee5eb;
+                border-radius: 5px;
+                padding: 10px;
+                margin-top: 10px;
+            }
+            .new-section h3 {
+                color: #0c5460;
+                margin-top: 0;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>频率词统计报告</h1>
+    <p>报告类型: 实时分析</p><p>总标题数: 255</p><p>生成时间: 2025-09-03 19:37:54</p>
+        <table>
+            <tr>
+                <th>排名</th>
+                <th>频率词</th>
+                <th>出现次数</th>
+                <th>占比</th>
+                <th>相关标题</th>
+            </tr>
+    
+            <tr>
+                <td>1</td>
+                <td class="word">美国</td>
+                <td class="count">3</td>
+                <td class="percentage">1.18%</td>
+                <td class="titles">[华尔街见闻] <a href="https://wallstreetcn.com/articles/3754795" target="_blank" class="news-link">美国8月ISM制造业PMI连续六个月萎缩，新订单改善，价格指数再回落</a> [8] <font color='grey'>- 19时37分</font><br>[财联社热门] <a href="https://www.cls.cn/detail/2134325" target="_blank" class="news-link">特朗普引发全球资金“大轮转”！私募巨头：亚洲和中东投资者正避开美国</a> [9] <font color='grey'>- 19时37分</font><br>[知乎] <a href="https://www.zhihu.com/question/1946578922608264943" target="_blank" class="news-link">九三阅兵同一时间美国五角大楼附近披萨订单激增，「披萨指数」的波动是巧合吗？</a> [9] <font color='grey'>- 19时37分</font></td>
+            </tr>
+        
+            <tr>
+                <td>2</td>
+                <td class="word">苹果 库克 iphone ipad mac ios</td>
+                <td class="count">2</td>
+                <td class="percentage">0.78%</td>
+                <td class="titles">[财联社热门] <a href="https://www.cls.cn/detail/2134572" target="_blank" class="news-link">知名爆料人：苹果大幅提高折叠屏iPhone出货预期</a> <font color='red'><strong>[4]</strong></font> <font color='grey'>- 19时37分</font><br>[财联社热门] <a href="https://www.cls.cn/detail/2134398" target="_blank" class="news-link">新款iPhone能否提振苹果股价？摩根大通：关键在中国！</a> [8] <font color='grey'>- 19时37分</font></td>
+            </tr>
+        
+            <tr>
+                <td>3</td>
+                <td class="word">宇树 王兴兴</td>
+                <td class="count">1</td>
+                <td class="percentage">0.39%</td>
+                <td class="titles">[财联社热门] <a href="https://www.cls.cn/detail/2134307" target="_blank" class="news-link">宇树科技公布上市时间表提振相关概念股 港股微创机器人大涨近12%</a> <font color='red'><strong>[3]</strong></font> <font color='grey'>- 19时37分</font></td>
+            </tr>
+        
+            <tr>
+                <td>4</td>
+                <td class="word">小米 雷军 xiaomi</td>
+                <td class="count">1</td>
+                <td class="percentage">0.39%</td>
+                <td class="titles">[抖音] <a href="https://www.douyin.com/hot/2224503" target="_blank" class="news-link">雷军凌晨3点多奔赴阅兵观礼台</a> [21] <font color='grey'>- 19时37分</font></td>
+            </tr>
+        
+            <tr>
+                <td>5</td>
+                <td class="word">谷歌 google gemini deepmind</td>
+                <td class="count">1</td>
+                <td class="percentage">0.39%</td>
+                <td class="titles">[华尔街见闻] <a href="https://wallstreetcn.com/articles/3754806" target="_blank" class="news-link">谷歌重大胜利！法院裁决不必出售Chrome浏览器，但将被禁止签独家合约</a> [7] <font color='grey'>- 19时37分</font></td>
+            </tr>
+        
+            <tr>
+                <td>6</td>
+                <td class="word">ai 人工智能</td>
+                <td class="count">1</td>
+                <td class="percentage">0.39%</td>
+                <td class="titles">[华尔街见闻] <a href="https://wallstreetcn.com/articles/3754825" target="_blank" class="news-link">A股全天走势分化，创业板涨近1%，AI硬件股再度反弹，国债尾盘大幅拉升，恒指下跌0.6%，医药股逆势活跃</a> [9] <font color='grey'>- 19时37分</font></td>
+            </tr>
+        
+            <tr>
+                <td>7</td>
+                <td class="word">国产</td>
+                <td class="count">1</td>
+                <td class="percentage">0.39%</td>
+                <td class="titles">[知乎] <a href="https://www.zhihu.com/question/1946515939823679156" target="_blank" class="news-link">无人作战方队亮相九三阅兵，国产机器狼等亮相，还有哪些亮点装备？代表了未来怎样的作战能力？</a> [16] <font color='grey'>- 19时37分</font></td>
+            </tr>
+        
+            <tr>
+                <td>8</td>
+                <td class="word">科技</td>
+                <td class="count">1</td>
+                <td class="percentage">0.39%</td>
+                <td class="titles">[华尔街见闻] <a href="https://wallstreetcn.com/articles/3754758" target="_blank" class="news-link">债市抛售引发连锁反应，科技股领跌，纳指4月来首度跌破50日均线，黄金创历史新高</a> <font color='red'><strong>[1]</strong></font> <font color='grey'>- 19时37分</font></td>
+            </tr>
+        
+        </table>
+    
+    </body>
+    </html>
+    
