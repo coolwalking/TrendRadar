@@ -19,7 +19,7 @@ import pytz
 import requests
 import yaml
 
-from trendradar.config import load_config, VERSION
+from trendradar.config import load_config, SMTP_CONFIGS, VERSION
 from trendradar import utils
 from trendradar.records import PushRecordManager
 from trendradar.fetcher import DataFetcher
@@ -3688,12 +3688,12 @@ def send_to_email(
             else:
                 # 其他端口优先尝试 TLS（更安全，更广泛支持）
                 use_tls = True
-        elif domain in config.SMTP_CONFIGS:
+        elif domain in SMTP_CONFIGS:
             # 使用预设配置
-            config = config.SMTP_CONFIGS[domain]
-            smtp_server = config["server"]
-            smtp_port = config["port"]
-            use_tls = config["encryption"] == "TLS"
+            smtp_config = SMTP_CONFIGS[domain]
+            smtp_server = smtp_config["server"]
+            smtp_port = smtp_config["port"]
+            use_tls = smtp_config["encryption"] == "TLS"
         else:
             print(f"未识别的邮箱服务商: {domain}，使用通用 SMTP 配置")
             smtp_server = f"smtp.{domain}"
