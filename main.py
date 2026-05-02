@@ -19,381 +19,10 @@ import pytz
 import requests
 import yaml
 
-
-VERSION = "3.5.0"
-
-
-# === SMTP邮件配置 ===
-SMTP_CONFIGS = {
-    # Gmail（使用 STARTTLS）
-    "gmail.com": {"server": "smtp.gmail.com", "port": 587, "encryption": "TLS"},
-    # QQ邮箱（使用 SSL，更稳定）
-    "qq.com": {"server": "smtp.qq.com", "port": 465, "encryption": "SSL"},
-    # Outlook（使用 STARTTLS）
-    "outlook.com": {
-        "server": "smtp-mail.outlook.com",
-        "port": 587,
-        "encryption": "TLS",
-    },
-    "hotmail.com": {
-        "server": "smtp-mail.outlook.com",
-        "port": 587,
-        "encryption": "TLS",
-    },
-    "live.com": {"server": "smtp-mail.outlook.com", "port": 587, "encryption": "TLS"},
-    # 网易邮箱（使用 SSL，更稳定）
-    "163.com": {"server": "smtp.163.com", "port": 465, "encryption": "SSL"},
-    "126.com": {"server": "smtp.126.com", "port": 465, "encryption": "SSL"},
-    # 新浪邮箱（使用 SSL）
-    "sina.com": {"server": "smtp.sina.com", "port": 465, "encryption": "SSL"},
-    # 搜狐邮箱（使用 SSL）
-    "sohu.com": {"server": "smtp.sohu.com", "port": 465, "encryption": "SSL"},
-    # 天翼邮箱（使用 SSL）
-    "189.cn": {"server": "smtp.189.cn", "port": 465, "encryption": "SSL"},
-    # 阿里云邮箱（使用 TLS）
-    "aliyun.com": {"server": "smtp.aliyun.com", "port": 465, "encryption": "TLS"},
-}
-
-
-# === 多账号推送工具函数 ===
-def parse_multi_account_config(config_value: str, separator: str = ";") -> List[str]:
-    """
-    解析多账号配置，返回账号列表
-
-    Args:
-        config_value: 配置值字符串，多个账号用分隔符分隔
-        separator: 分隔符，默认为 ;
-
-    Returns:
-        账号列表，空字符串会被保留（用于占位）
-    """
-    if not config_value:
-        return []
-    # 保留空字符串用于占位（如 ";token2" 表示第一个账号无token）
-    accounts = [acc.strip() for acc in config_value.split(separator)]
-    # 过滤掉全部为空的情况
-    if all(not acc for acc in accounts):
-        return []
-    return accounts
-
-
-def validate_paired_configs(
-    configs: Dict[str, List[str]],
-    channel_name: str,
-    required_keys: Optional[List[str]] = None
-) -> Tuple[bool, int]:
-    """
-    验证配对配置的数量是否一致
-
-    Args:
-        configs: 配置字典，key 为配置名，value 为账号列表
-        channel_name: 渠道名称，用于日志输出
-        required_keys: 必须有值的配置项列表
-
-    Returns:
-        (是否验证通过, 账号数量)
-    """
-    # 过滤掉空列表
-    non_empty_configs = {k: v for k, v in configs.items() if v}
-
-    if not non_empty_configs:
-        return True, 0
-
-    # 检查必须项
-    if required_keys:
-        for key in required_keys:
-            if key not in non_empty_configs or not non_empty_configs[key]:
-                return True, 0  # 必须项为空，视为未配置
-
-    # 获取所有非空配置的长度
-    lengths = {k: len(v) for k, v in non_empty_configs.items()}
-    unique_lengths = set(lengths.values())
-
-    if len(unique_lengths) > 1:
-        print(f"❌ {channel_name} 配置错误：配对配置数量不一致，将跳过该渠道推送")
-        for key, length in lengths.items():
-            print(f"   - {key}: {length} 个")
-        return False, 0
-
-    return True, list(unique_lengths)[0] if unique_lengths else 0
-
-
-def limit_accounts(
-    accounts: List[str],
-    max_count: int,
-    channel_name: str
-) -> List[str]:
-    """
-    限制账号数量
-
-    Args:
-        accounts: 账号列表
-        max_count: 最大账号数量
-        channel_name: 渠道名称，用于日志输出
-
-    Returns:
-        限制后的账号列表
-    """
-    if len(accounts) > max_count:
-        print(f"⚠️ {channel_name} 配置了 {len(accounts)} 个账号，超过最大限制 {max_count}，只使用前 {max_count} 个")
-        print(f"   ⚠️ 警告：如果您是 fork 用户，过多账号可能导致 GitHub Actions 运行时间过长，存在账号风险")
-        return accounts[:max_count]
-    return accounts
-
-
-def get_account_at_index(accounts: List[str], index: int, default: str = "") -> str:
-    """
-    安全获取指定索引的账号值
-
-    Args:
-        accounts: 账号列表
-        index: 索引
-        default: 默认值
-
-    Returns:
-        账号值或默认值
-    """
-    if index < len(accounts):
-        return accounts[index] if accounts[index] else default
-    return default
-
-
-# === 配置管理 ===
-def load_config():
-    """加载配置文件"""
-    config_path = os.environ.get("CONFIG_PATH", "config/config.yaml")
-
-    if not Path(config_path).exists():
-        raise FileNotFoundError(f"配置文件 {config_path} 不存在")
-
-    with open(config_path, "r", encoding="utf-8") as f:
-        config_data = yaml.safe_load(f)
-
-    print(f"配置文件加载成功: {config_path}")
-
-    # 构建配置
-    config = {
-        "VERSION_CHECK_URL": config_data["app"]["version_check_url"],
-        "SHOW_VERSION_UPDATE": config_data["app"]["show_version_update"],
-        "REQUEST_INTERVAL": config_data["crawler"]["request_interval"],
-        "REPORT_MODE": os.environ.get("REPORT_MODE", "").strip()
-        or config_data["report"]["mode"],
-        "RANK_THRESHOLD": config_data["report"]["rank_threshold"],
-        "SORT_BY_POSITION_FIRST": os.environ.get("SORT_BY_POSITION_FIRST", "").strip().lower()
-        in ("true", "1")
-        if os.environ.get("SORT_BY_POSITION_FIRST", "").strip()
-        else config_data["report"].get("sort_by_position_first", False),
-        "MAX_NEWS_PER_KEYWORD": int(
-            os.environ.get("MAX_NEWS_PER_KEYWORD", "").strip() or "0"
-        )
-        or config_data["report"].get("max_news_per_keyword", 0),
-        "REVERSE_CONTENT_ORDER": os.environ.get("REVERSE_CONTENT_ORDER", "").strip().lower()
-        in ("true", "1")
-        if os.environ.get("REVERSE_CONTENT_ORDER", "").strip()
-        else config_data["report"].get("reverse_content_order", False),
-        "USE_PROXY": config_data["crawler"]["use_proxy"],
-        "DEFAULT_PROXY": config_data["crawler"]["default_proxy"],
-        "ENABLE_CRAWLER": os.environ.get("ENABLE_CRAWLER", "").strip().lower()
-        in ("true", "1")
-        if os.environ.get("ENABLE_CRAWLER", "").strip()
-        else config_data["crawler"]["enable_crawler"],
-        "ENABLE_NOTIFICATION": os.environ.get("ENABLE_NOTIFICATION", "").strip().lower()
-        in ("true", "1")
-        if os.environ.get("ENABLE_NOTIFICATION", "").strip()
-        else config_data["notification"]["enable_notification"],
-        "MESSAGE_BATCH_SIZE": config_data["notification"]["message_batch_size"],
-        "DINGTALK_BATCH_SIZE": config_data["notification"].get(
-            "dingtalk_batch_size", 20000
-        ),
-        "FEISHU_BATCH_SIZE": config_data["notification"].get("feishu_batch_size", 29000),
-        "BARK_BATCH_SIZE": config_data["notification"].get("bark_batch_size", 3600),
-        "SLACK_BATCH_SIZE": config_data["notification"].get("slack_batch_size", 4000),
-        "BATCH_SEND_INTERVAL": config_data["notification"]["batch_send_interval"],
-        "FEISHU_MESSAGE_SEPARATOR": config_data["notification"][
-            "feishu_message_separator"
-        ],
-        # 多账号配置
-        "MAX_ACCOUNTS_PER_CHANNEL": int(
-            os.environ.get("MAX_ACCOUNTS_PER_CHANNEL", "").strip() or "0"
-        )
-        or config_data["notification"].get("max_accounts_per_channel", 3),
-        "PUSH_WINDOW": {
-            "ENABLED": os.environ.get("PUSH_WINDOW_ENABLED", "").strip().lower()
-            in ("true", "1")
-            if os.environ.get("PUSH_WINDOW_ENABLED", "").strip()
-            else config_data["notification"]
-            .get("push_window", {})
-            .get("enabled", False),
-            "TIME_RANGE": {
-                "START": os.environ.get("PUSH_WINDOW_START", "").strip()
-                or config_data["notification"]
-                .get("push_window", {})
-                .get("time_range", {})
-                .get("start", "08:00"),
-                "END": os.environ.get("PUSH_WINDOW_END", "").strip()
-                or config_data["notification"]
-                .get("push_window", {})
-                .get("time_range", {})
-                .get("end", "22:00"),
-            },
-            "ONCE_PER_DAY": os.environ.get("PUSH_WINDOW_ONCE_PER_DAY", "").strip().lower()
-            in ("true", "1")
-            if os.environ.get("PUSH_WINDOW_ONCE_PER_DAY", "").strip()
-            else config_data["notification"]
-            .get("push_window", {})
-            .get("once_per_day", True),
-            "RECORD_RETENTION_DAYS": int(
-                os.environ.get("PUSH_WINDOW_RETENTION_DAYS", "").strip() or "0"
-            )
-            or config_data["notification"]
-            .get("push_window", {})
-            .get("push_record_retention_days", 7),
-        },
-        "WEIGHT_CONFIG": {
-            "RANK_WEIGHT": config_data["weight"]["rank_weight"],
-            "FREQUENCY_WEIGHT": config_data["weight"]["frequency_weight"],
-            "HOTNESS_WEIGHT": config_data["weight"]["hotness_weight"],
-        },
-        "PLATFORMS": config_data["platforms"],
-    }
-
-    # 通知渠道配置（环境变量优先）
-    notification = config_data.get("notification", {})
-    webhooks = notification.get("webhooks", {})
-
-    config["FEISHU_WEBHOOK_URL"] = os.environ.get(
-        "FEISHU_WEBHOOK_URL", ""
-    ).strip() or webhooks.get("feishu_url", "")
-    config["DINGTALK_WEBHOOK_URL"] = os.environ.get(
-        "DINGTALK_WEBHOOK_URL", ""
-    ).strip() or webhooks.get("dingtalk_url", "")
-    config["WEWORK_WEBHOOK_URL"] = os.environ.get(
-        "WEWORK_WEBHOOK_URL", ""
-    ).strip() or webhooks.get("wework_url", "")
-    config["WEWORK_MSG_TYPE"] = os.environ.get(
-        "WEWORK_MSG_TYPE", ""
-    ).strip() or webhooks.get("wework_msg_type", "markdown")
-    config["TELEGRAM_BOT_TOKEN"] = os.environ.get(
-        "TELEGRAM_BOT_TOKEN", ""
-    ).strip() or webhooks.get("telegram_bot_token", "")
-    config["TELEGRAM_CHAT_ID"] = os.environ.get(
-        "TELEGRAM_CHAT_ID", ""
-    ).strip() or webhooks.get("telegram_chat_id", "")
-
-    # 邮件配置
-    config["EMAIL_FROM"] = os.environ.get("EMAIL_FROM", "").strip() or webhooks.get(
-        "email_from", ""
-    )
-    config["EMAIL_PASSWORD"] = os.environ.get(
-        "EMAIL_PASSWORD", ""
-    ).strip() or webhooks.get("email_password", "")
-    config["EMAIL_TO"] = os.environ.get("EMAIL_TO", "").strip() or webhooks.get(
-        "email_to", ""
-    )
-    config["EMAIL_SMTP_SERVER"] = os.environ.get(
-        "EMAIL_SMTP_SERVER", ""
-    ).strip() or webhooks.get("email_smtp_server", "")
-    config["EMAIL_SMTP_PORT"] = os.environ.get(
-        "EMAIL_SMTP_PORT", ""
-    ).strip() or webhooks.get("email_smtp_port", "")
-
-    # ntfy配置
-    config["NTFY_SERVER_URL"] = (
-        os.environ.get("NTFY_SERVER_URL", "").strip()
-        or webhooks.get("ntfy_server_url")
-        or "https://ntfy.sh"
-    )
-    config["NTFY_TOPIC"] = os.environ.get("NTFY_TOPIC", "").strip() or webhooks.get(
-        "ntfy_topic", ""
-    )
-    config["NTFY_TOKEN"] = os.environ.get("NTFY_TOKEN", "").strip() or webhooks.get(
-        "ntfy_token", ""
-    )
-
-    # Bark配置
-    config["BARK_URL"] = os.environ.get("BARK_URL", "").strip() or webhooks.get(
-        "bark_url", ""
-    )
-
-    # Slack配置
-    config["SLACK_WEBHOOK_URL"] = os.environ.get("SLACK_WEBHOOK_URL", "").strip() or webhooks.get(
-        "slack_webhook_url", ""
-    )
-
-    # 输出配置来源信息
-    notification_sources = []
-    max_accounts = config["MAX_ACCOUNTS_PER_CHANNEL"]
-
-    if config["FEISHU_WEBHOOK_URL"]:
-        accounts = parse_multi_account_config(config["FEISHU_WEBHOOK_URL"])
-        count = min(len(accounts), max_accounts)
-        source = "环境变量" if os.environ.get("FEISHU_WEBHOOK_URL") else "配置文件"
-        notification_sources.append(f"飞书({source}, {count}个账号)")
-    if config["DINGTALK_WEBHOOK_URL"]:
-        accounts = parse_multi_account_config(config["DINGTALK_WEBHOOK_URL"])
-        count = min(len(accounts), max_accounts)
-        source = "环境变量" if os.environ.get("DINGTALK_WEBHOOK_URL") else "配置文件"
-        notification_sources.append(f"钉钉({source}, {count}个账号)")
-    if config["WEWORK_WEBHOOK_URL"]:
-        accounts = parse_multi_account_config(config["WEWORK_WEBHOOK_URL"])
-        count = min(len(accounts), max_accounts)
-        source = "环境变量" if os.environ.get("WEWORK_WEBHOOK_URL") else "配置文件"
-        notification_sources.append(f"企业微信({source}, {count}个账号)")
-    if config["TELEGRAM_BOT_TOKEN"] and config["TELEGRAM_CHAT_ID"]:
-        tokens = parse_multi_account_config(config["TELEGRAM_BOT_TOKEN"])
-        chat_ids = parse_multi_account_config(config["TELEGRAM_CHAT_ID"])
-        # 验证数量一致性
-        valid, count = validate_paired_configs(
-            {"bot_token": tokens, "chat_id": chat_ids},
-            "Telegram",
-            required_keys=["bot_token", "chat_id"]
-        )
-        if valid and count > 0:
-            count = min(count, max_accounts)
-            token_source = "环境变量" if os.environ.get("TELEGRAM_BOT_TOKEN") else "配置文件"
-            notification_sources.append(f"Telegram({token_source}, {count}个账号)")
-    if config["EMAIL_FROM"] and config["EMAIL_PASSWORD"] and config["EMAIL_TO"]:
-        from_source = "环境变量" if os.environ.get("EMAIL_FROM") else "配置文件"
-        notification_sources.append(f"邮件({from_source})")
-
-    if config["NTFY_SERVER_URL"] and config["NTFY_TOPIC"]:
-        topics = parse_multi_account_config(config["NTFY_TOPIC"])
-        tokens = parse_multi_account_config(config["NTFY_TOKEN"])
-        # ntfy 的 token 是可选的，但如果配置了，数量必须与 topic 一致
-        if tokens:
-            valid, count = validate_paired_configs(
-                {"topic": topics, "token": tokens},
-                "ntfy"
-            )
-            if valid and count > 0:
-                count = min(count, max_accounts)
-                server_source = "环境变量" if os.environ.get("NTFY_SERVER_URL") else "配置文件"
-                notification_sources.append(f"ntfy({server_source}, {count}个账号)")
-        else:
-            count = min(len(topics), max_accounts)
-            server_source = "环境变量" if os.environ.get("NTFY_SERVER_URL") else "配置文件"
-            notification_sources.append(f"ntfy({server_source}, {count}个账号)")
-
-    if config["BARK_URL"]:
-        accounts = parse_multi_account_config(config["BARK_URL"])
-        count = min(len(accounts), max_accounts)
-        bark_source = "环境变量" if os.environ.get("BARK_URL") else "配置文件"
-        notification_sources.append(f"Bark({bark_source}, {count}个账号)")
-
-    if config["SLACK_WEBHOOK_URL"]:
-        accounts = parse_multi_account_config(config["SLACK_WEBHOOK_URL"])
-        count = min(len(accounts), max_accounts)
-        slack_source = "环境变量" if os.environ.get("SLACK_WEBHOOK_URL") else "配置文件"
-        notification_sources.append(f"Slack({slack_source}, {count}个账号)")
-
-    if notification_sources:
-        print(f"通知渠道配置来源: {', '.join(notification_sources)}")
-        print(f"每个渠道最大账号数: {max_accounts}")
-    else:
-        print("未配置任何通知渠道")
-
-    return config
-
+from trendradar.config import load_config, VERSION
+from trendradar import utils
+from trendradar.records import PushRecordManager
+from trendradar.fetcher import DataFetcher
 
 print("正在加载配置...")
 CONFIG = load_config()
@@ -401,348 +30,12 @@ print(f"TrendRadar v{VERSION} 配置加载完成")
 print(f"监控平台数量: {len(CONFIG['PLATFORMS'])}")
 
 
-# === 工具函数 ===
-def get_beijing_time():
-    """获取北京时间"""
-    return datetime.now(pytz.timezone("Asia/Shanghai"))
-
-
-def format_date_folder():
-    """格式化日期文件夹"""
-    return get_beijing_time().strftime("%Y年%m月%d日")
-
-
-def format_time_filename():
-    """格式化时间文件名"""
-    return get_beijing_time().strftime("%H时%M分")
-
-
-def clean_title(title: str) -> str:
-    """清理标题中的特殊字符"""
-    if not isinstance(title, str):
-        title = str(title)
-    cleaned_title = title.replace("\n", " ").replace("\r", " ")
-    cleaned_title = re.sub(r"\s+", " ", cleaned_title)
-    cleaned_title = cleaned_title.strip()
-    return cleaned_title
-
-
-def ensure_directory_exists(directory: str):
-    """确保目录存在"""
-    Path(directory).mkdir(parents=True, exist_ok=True)
-
-
-def get_output_path(subfolder: str, filename: str) -> str:
-    """获取输出路径"""
-    date_folder = format_date_folder()
-    output_dir = Path("output") / date_folder / subfolder
-    ensure_directory_exists(str(output_dir))
-    return str(output_dir / filename)
-
-
-def check_version_update(
-    current_version: str, version_url: str, proxy_url: Optional[str] = None
-) -> Tuple[bool, Optional[str]]:
-    """检查版本更新"""
-    try:
-        proxies = None
-        if proxy_url:
-            proxies = {"http": proxy_url, "https": proxy_url}
-
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Accept": "text/plain, */*",
-            "Cache-Control": "no-cache",
-        }
-
-        response = requests.get(
-            version_url, proxies=proxies, headers=headers, timeout=10
-        )
-        response.raise_for_status()
-
-        remote_version = response.text.strip()
-        print(f"当前版本: {current_version}, 远程版本: {remote_version}")
-
-        # 比较版本
-        def parse_version(version_str):
-            try:
-                parts = version_str.strip().split(".")
-                if len(parts) != 3:
-                    raise ValueError("版本号格式不正确")
-                return int(parts[0]), int(parts[1]), int(parts[2])
-            except:
-                return 0, 0, 0
-
-        current_tuple = parse_version(current_version)
-        remote_tuple = parse_version(remote_version)
-
-        need_update = current_tuple < remote_tuple
-        return need_update, remote_version if need_update else None
-
-    except Exception as e:
-        print(f"版本检查失败: {e}")
-        return False, None
-
-
-def is_first_crawl_today() -> bool:
-    """检测是否是当天第一次爬取"""
-    date_folder = format_date_folder()
-    txt_dir = Path("output") / date_folder / "txt"
-
-    if not txt_dir.exists():
-        return True
-
-    files = sorted([f for f in txt_dir.iterdir() if f.suffix == ".txt"])
-    return len(files) <= 1
-
-
-def html_escape(text: str) -> str:
-    """HTML转义"""
-    if not isinstance(text, str):
-        text = str(text)
-
-    return (
-        text.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
-        .replace("'", "&#x27;")
-    )
-
-
-# === 推送记录管理 ===
-class PushRecordManager:
-    """推送记录管理器"""
-
-    def __init__(self):
-        self.record_dir = Path("output") / ".push_records"
-        self.ensure_record_dir()
-        self.cleanup_old_records()
-
-    def ensure_record_dir(self):
-        """确保记录目录存在"""
-        self.record_dir.mkdir(parents=True, exist_ok=True)
-
-    def get_today_record_file(self) -> Path:
-        """获取今天的记录文件路径"""
-        today = get_beijing_time().strftime("%Y%m%d")
-        return self.record_dir / f"push_record_{today}.json"
-
-    def cleanup_old_records(self):
-        """清理过期的推送记录"""
-        retention_days = CONFIG["PUSH_WINDOW"]["RECORD_RETENTION_DAYS"]
-        current_time = get_beijing_time()
-
-        for record_file in self.record_dir.glob("push_record_*.json"):
-            try:
-                date_str = record_file.stem.replace("push_record_", "")
-                file_date = datetime.strptime(date_str, "%Y%m%d")
-                file_date = pytz.timezone("Asia/Shanghai").localize(file_date)
-
-                if (current_time - file_date).days > retention_days:
-                    record_file.unlink()
-                    print(f"清理过期推送记录: {record_file.name}")
-            except Exception as e:
-                print(f"清理记录文件失败 {record_file}: {e}")
-
-    def has_pushed_today(self) -> bool:
-        """检查今天是否已经推送过"""
-        record_file = self.get_today_record_file()
-
-        if not record_file.exists():
-            return False
-
-        try:
-            with open(record_file, "r", encoding="utf-8") as f:
-                record = json.load(f)
-            return record.get("pushed", False)
-        except Exception as e:
-            print(f"读取推送记录失败: {e}")
-            return False
-
-    def record_push(self, report_type: str):
-        """记录推送"""
-        record_file = self.get_today_record_file()
-        now = get_beijing_time()
-
-        record = {
-            "pushed": True,
-            "push_time": now.strftime("%Y-%m-%d %H:%M:%S"),
-            "report_type": report_type,
-        }
-
-        try:
-            with open(record_file, "w", encoding="utf-8") as f:
-                json.dump(record, f, ensure_ascii=False, indent=2)
-            print(f"推送记录已保存: {report_type} at {now.strftime('%H:%M:%S')}")
-        except Exception as e:
-            print(f"保存推送记录失败: {e}")
-
-    def is_in_time_range(self, start_time: str, end_time: str) -> bool:
-        """检查当前时间是否在指定时间范围内"""
-        now = get_beijing_time()
-        current_time = now.strftime("%H:%M")
-    
-        def normalize_time(time_str: str) -> str:
-            """将时间字符串标准化为 HH:MM 格式"""
-            try:
-                parts = time_str.strip().split(":")
-                if len(parts) != 2:
-                    raise ValueError(f"时间格式错误: {time_str}")
-            
-                hour = int(parts[0])
-                minute = int(parts[1])
-            
-                if not (0 <= hour <= 23 and 0 <= minute <= 59):
-                    raise ValueError(f"时间范围错误: {time_str}")
-            
-                return f"{hour:02d}:{minute:02d}"
-            except Exception as e:
-                print(f"时间格式化错误 '{time_str}': {e}")
-                return time_str
-    
-        normalized_start = normalize_time(start_time)
-        normalized_end = normalize_time(end_time)
-        normalized_current = normalize_time(current_time)
-    
-        result = normalized_start <= normalized_current <= normalized_end
-    
-        if not result:
-            print(f"时间窗口判断：当前 {normalized_current}，窗口 {normalized_start}-{normalized_end}")
-    
-        return result
-
-
-# === 数据获取 ===
-class DataFetcher:
-    """数据获取器"""
-
-    def __init__(self, proxy_url: Optional[str] = None):
-        self.proxy_url = proxy_url
-
-    def fetch_data(
-        self,
-        id_info: Union[str, Tuple[str, str]],
-        max_retries: int = 2,
-        min_retry_wait: int = 3,
-        max_retry_wait: int = 5,
-    ) -> Tuple[Optional[str], str, str]:
-        """获取指定ID数据，支持重试"""
-        if isinstance(id_info, tuple):
-            id_value, alias = id_info
-        else:
-            id_value = id_info
-            alias = id_value
-
-        url = f"https://newsnow.busiyi.world/api/s?id={id_value}&latest"
-
-        proxies = None
-        if self.proxy_url:
-            proxies = {"http": self.proxy_url, "https": self.proxy_url}
-
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-            "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-            "Connection": "keep-alive",
-            "Cache-Control": "no-cache",
-        }
-
-        retries = 0
-        while retries <= max_retries:
-            try:
-                response = requests.get(
-                    url, proxies=proxies, headers=headers, timeout=10
-                )
-                response.raise_for_status()
-
-                data_text = response.text
-                data_json = json.loads(data_text)
-
-                status = data_json.get("status", "未知")
-                if status not in ["success", "cache"]:
-                    raise ValueError(f"响应状态异常: {status}")
-
-                status_info = "最新数据" if status == "success" else "缓存数据"
-                print(f"获取 {id_value} 成功（{status_info}）")
-                return data_text, id_value, alias
-
-            except Exception as e:
-                retries += 1
-                if retries <= max_retries:
-                    base_wait = random.uniform(min_retry_wait, max_retry_wait)
-                    additional_wait = (retries - 1) * random.uniform(1, 2)
-                    wait_time = base_wait + additional_wait
-                    print(f"请求 {id_value} 失败: {e}. {wait_time:.2f}秒后重试...")
-                    time.sleep(wait_time)
-                else:
-                    print(f"请求 {id_value} 失败: {e}")
-                    return None, id_value, alias
-        return None, id_value, alias
-
-    def crawl_websites(
-        self,
-        ids_list: List[Union[str, Tuple[str, str]]],
-        request_interval: int = CONFIG["REQUEST_INTERVAL"],
-    ) -> Tuple[Dict, Dict, List]:
-        """爬取多个网站数据"""
-        results = {}
-        id_to_name = {}
-        failed_ids = []
-
-        for i, id_info in enumerate(ids_list):
-            if isinstance(id_info, tuple):
-                id_value, name = id_info
-            else:
-                id_value = id_info
-                name = id_value
-
-            id_to_name[id_value] = name
-            response, _, _ = self.fetch_data(id_info)
-
-            if response:
-                try:
-                    data = json.loads(response)
-                    results[id_value] = {}
-                    for index, item in enumerate(data.get("items", []), 1):
-                        title = item.get("title")
-                        # 跳过无效标题（None、float、空字符串）
-                        if title is None or isinstance(title, float) or not str(title).strip():
-                            continue
-                        title = str(title).strip()
-                        url = item.get("url", "")
-                        mobile_url = item.get("mobileUrl", "")
-
-                        if title in results[id_value]:
-                            results[id_value][title]["ranks"].append(index)
-                        else:
-                            results[id_value][title] = {
-                                "ranks": [index],
-                                "url": url,
-                                "mobileUrl": mobile_url,
-                            }
-                except json.JSONDecodeError:
-                    print(f"解析 {id_value} 响应失败")
-                    failed_ids.append(id_value)
-                except Exception as e:
-                    print(f"处理 {id_value} 数据出错: {e}")
-                    failed_ids.append(id_value)
-            else:
-                failed_ids.append(id_value)
-
-            if i < len(ids_list) - 1:
-                actual_interval = request_interval + random.randint(-10, 20)
-                actual_interval = max(50, actual_interval)
-                time.sleep(actual_interval / 1000)
-
-        print(f"成功: {list(results.keys())}, 失败: {failed_ids}")
-        return results, id_to_name, failed_ids
 
 
 # === 数据处理 ===
 def save_titles_to_file(results: Dict, id_to_name: Dict, failed_ids: List) -> str:
     """保存标题到文件"""
-    file_path = get_output_path("txt", f"{format_time_filename()}.txt")
+    file_path = utils.get_output_path("txt", f"{utils.format_time_filename()}.txt")
 
     with open(file_path, "w", encoding="utf-8") as f:
         for id_value, title_data in results.items():
@@ -756,7 +49,7 @@ def save_titles_to_file(results: Dict, id_to_name: Dict, failed_ids: List) -> st
             # 按排名排序标题
             sorted_titles = []
             for title, info in title_data.items():
-                cleaned_title = clean_title(title)
+                cleaned_title = utils.clean_title(title)
                 if isinstance(info, dict):
                     ranks = info.get("ranks", [])
                     url = info.get("url", "")
@@ -942,7 +235,7 @@ def parse_file_titles(file_path: Path) -> Tuple[Dict, Dict]:
                             if url_part.endswith("]"):
                                 url = url_part[:-1]
 
-                        title = clean_title(title_part.strip())
+                        title = utils.clean_title(title_part.strip())
                         ranks = [rank] if rank is not None else [1]
 
                         titles_by_id[source_id][title] = {
@@ -961,7 +254,7 @@ def read_all_today_titles(
     current_platform_ids: Optional[List[str]] = None,
 ) -> Tuple[Dict, Dict, Dict]:
     """读取当天所有标题文件，支持按当前监控平台过滤"""
-    date_folder = format_date_folder()
+    date_folder = utils.format_date_folder()
     txt_dir = Path("output") / date_folder / "txt"
 
     if not txt_dir.exists():
@@ -1076,7 +369,7 @@ def process_source_data(
 
 def detect_latest_new_titles(current_platform_ids: Optional[List[str]] = None) -> Dict:
     """检测当日最新批次的新增标题，支持按当前监控平台过滤"""
-    date_folder = format_date_folder()
+    date_folder = utils.format_date_folder()
     txt_dir = Path("output") / date_folder / "txt"
 
     if not txt_dir.exists():
@@ -1293,7 +586,7 @@ def count_word_frequency(
         word_groups = [{"required": [], "normal": [], "group_key": "全部新闻"}]
         filter_words = []  # 清空过滤词，显示所有新闻
 
-    is_first_today = is_first_crawl_today()
+    is_first_today = utils.is_first_crawl_today()
 
     # 确定处理的数据源和新增标记逻辑
     if mode == "incremental":
@@ -1718,7 +1011,7 @@ def format_title_for_platform(
 
     link_url = title_data["mobile_url"] or title_data["url"]
 
-    cleaned_title = clean_title(title_data["title"])
+    cleaned_title = utils.clean_title(title_data["title"])
 
     if platform == "feishu":
         if link_url:
@@ -1789,7 +1082,7 @@ def format_title_for_platform(
 
     elif platform == "telegram":
         if link_url:
-            formatted_title = f'<a href="{link_url}">{html_escape(cleaned_title)}</a>'
+            formatted_title = f'<a href="{link_url}">{utils.html_escape(cleaned_title)}</a>'
         else:
             formatted_title = cleaned_title
 
@@ -1866,11 +1159,11 @@ def format_title_for_platform(
 
         link_url = title_data["mobile_url"] or title_data["url"]
 
-        escaped_title = html_escape(cleaned_title)
-        escaped_source_name = html_escape(title_data["source_name"])
+        escaped_title = utils.html_escape(cleaned_title)
+        escaped_source_name = utils.html_escape(title_data["source_name"])
 
         if link_url:
-            escaped_url = html_escape(link_url)
+            escaped_url = utils.html_escape(link_url)
             formatted_title = f'[{escaped_source_name}] <a href="{escaped_url}" target="_blank" class="news-link">{escaped_title}</a>'
         else:
             formatted_title = (
@@ -1880,7 +1173,7 @@ def format_title_for_platform(
         if rank_display:
             formatted_title += f" {rank_display}"
         if title_data["time_display"]:
-            escaped_time = html_escape(title_data["time_display"])
+            escaped_time = utils.html_escape(title_data["time_display"])
             formatted_title += f" <font color='grey'>- {escaped_time}</font>"
         if title_data["count"] > 1:
             formatted_title += f" <font color='green'>({title_data['count']}次)</font>"
@@ -1913,9 +1206,9 @@ def generate_html_report(
         else:
             filename = "当日汇总.html"
     else:
-        filename = f"{format_time_filename()}.html"
+        filename = f"{utils.format_time_filename()}.html"
 
-    file_path = get_output_path("html", filename)
+    file_path = utils.get_output_path("html", filename)
 
     report_data = prepare_report_data(stats, failed_ids, new_titles, id_to_name, mode)
 
@@ -1934,7 +1227,7 @@ def generate_html_report(
 
         # 同时生成到 output 目录（供 Docker Volume 挂载访问）
         output_index_path = Path("output") / "index.html"
-        ensure_directory_exists("output")
+        utils.ensure_directory_exists("output")
         with open(output_index_path, "w", encoding="utf-8") as f:
             f.write(html_content)
 
@@ -2429,7 +1722,7 @@ def render_html_content(
                         <span class="info-label">生成时间</span>
                         <span class="info-value">"""
 
-    now = get_beijing_time()
+    now = utils.get_beijing_time()
     html += now.strftime("%m-%d %H:%M")
 
     html += """</span>
@@ -2446,7 +1739,7 @@ def render_html_content(
                     <div class="error-title">⚠️ 请求失败的平台</div>
                     <ul class="error-list">"""
         for id_value in report_data["failed_ids"]:
-            html += f'<li class="error-item">{html_escape(id_value)}</li>'
+            html += f'<li class="error-item">{utils.html_escape(id_value)}</li>'
         html += """
                     </ul>
                 </div>"""
@@ -2467,7 +1760,7 @@ def render_html_content(
             else:
                 count_class = ""
 
-            escaped_word = html_escape(stat["word"])
+            escaped_word = utils.html_escape(stat["word"])
 
             stats_html += f"""
                 <div class="word-group">
@@ -2489,7 +1782,7 @@ def render_html_content(
                         <div class="news-number">{j}</div>
                         <div class="news-content">
                             <div class="news-header">
-                                <span class="source-name">{html_escape(title_data["source_name"])}</span>"""
+                                <span class="source-name">{utils.html_escape(title_data["source_name"])}</span>"""
 
                 # 处理排名显示
                 ranks = title_data.get("ranks", [])
@@ -2523,7 +1816,7 @@ def render_html_content(
                         .replace("]", "")
                     )
                     stats_html += (
-                        f'<span class="time-info">{html_escape(simplified_time)}</span>'
+                        f'<span class="time-info">{utils.html_escape(simplified_time)}</span>'
                     )
 
                 # 处理出现次数
@@ -2536,11 +1829,11 @@ def render_html_content(
                             <div class="news-title">"""
 
                 # 处理标题和链接
-                escaped_title = html_escape(title_data["title"])
+                escaped_title = utils.html_escape(title_data["title"])
                 link_url = title_data.get("mobile_url") or title_data.get("url", "")
 
                 if link_url:
-                    escaped_url = html_escape(link_url)
+                    escaped_url = utils.html_escape(link_url)
                     stats_html += f'<a href="{escaped_url}" target="_blank" class="news-link">{escaped_title}</a>'
                 else:
                     stats_html += escaped_title
@@ -2561,7 +1854,7 @@ def render_html_content(
                     <div class="new-section-title">本次新增热点 (共 {report_data['total_new_count']} 条)</div>"""
 
         for source_data in report_data["new_titles"]:
-            escaped_source = html_escape(source_data["source_name"])
+            escaped_source = utils.html_escape(source_data["source_name"])
             titles_count = len(source_data["titles"])
 
             new_titles_html += f"""
@@ -2596,11 +1889,11 @@ def render_html_content(
                                 <div class="new-item-title">"""
 
                 # 处理新增新闻的链接
-                escaped_title = html_escape(title_data["title"])
+                escaped_title = utils.html_escape(title_data["title"])
                 link_url = title_data.get("mobile_url") or title_data.get("url", "")
 
                 if link_url:
-                    escaped_url = html_escape(link_url)
+                    escaped_url = utils.html_escape(link_url)
                     new_titles_html += f'<a href="{escaped_url}" target="_blank" class="news-link">{escaped_title}</a>'
                 else:
                     new_titles_html += escaped_title
@@ -3054,7 +2347,7 @@ def render_feishu_content(
         for i, id_value in enumerate(report_data["failed_ids"], 1):
             text_content += f"  • <font color='red'>{id_value}</font>\n"
 
-    now = get_beijing_time()
+    now = utils.get_beijing_time()
     text_content += (
         f"\n\n<font color='grey'>更新时间：{now.strftime('%Y-%m-%d %H:%M:%S')}</font>"
     )
@@ -3072,7 +2365,7 @@ def render_dingtalk_content(
     total_titles = sum(
         len(stat["titles"]) for stat in report_data["stats"] if stat["count"] > 0
     )
-    now = get_beijing_time()
+    now = utils.get_beijing_time()
 
     # 头部信息
     header_content = f"**总新闻数：** {total_titles}\n\n"
@@ -3283,7 +2576,7 @@ def split_content_into_batches(
     total_titles = sum(
         len(stat["titles"]) for stat in report_data["stats"] if stat["count"] > 0
     )
-    now = get_beijing_time()
+    now = utils.get_beijing_time()
 
     base_header = ""
     if format_type in ("wework", "bark"):
@@ -3814,12 +3107,12 @@ def send_to_notifications(
     max_accounts = CONFIG["MAX_ACCOUNTS_PER_CHANNEL"]
 
     if CONFIG["PUSH_WINDOW"]["ENABLED"]:
-        push_manager = PushRecordManager()
+        push_manager = PushRecordManager(CONFIG)
         time_range_start = CONFIG["PUSH_WINDOW"]["TIME_RANGE"]["START"]
         time_range_end = CONFIG["PUSH_WINDOW"]["TIME_RANGE"]["END"]
 
         if not push_manager.is_in_time_range(time_range_start, time_range_end):
-            now = get_beijing_time()
+            now = utils.get_beijing_time()
             print(
                 f"推送窗口控制：当前时间 {now.strftime('%H:%M')} 不在推送时间窗口 {time_range_start}-{time_range_end} 内，跳过推送"
             )
@@ -3837,9 +3130,9 @@ def send_to_notifications(
     update_info_to_send = update_info if CONFIG["SHOW_VERSION_UPDATE"] else None
 
     # 发送到飞书（多账号）
-    feishu_urls = parse_multi_account_config(CONFIG["FEISHU_WEBHOOK_URL"])
+    feishu_urls = utils.parse_multi_account_config(CONFIG["FEISHU_WEBHOOK_URL"])
     if feishu_urls:
-        feishu_urls = limit_accounts(feishu_urls, max_accounts, "飞书")
+        feishu_urls = utils.limit_accounts(feishu_urls, max_accounts, "飞书")
         feishu_results = []
         for i, url in enumerate(feishu_urls):
             if url:  # 跳过空值
@@ -3851,9 +3144,9 @@ def send_to_notifications(
         results["feishu"] = any(feishu_results) if feishu_results else False
 
     # 发送到钉钉（多账号）
-    dingtalk_urls = parse_multi_account_config(CONFIG["DINGTALK_WEBHOOK_URL"])
+    dingtalk_urls = utils.parse_multi_account_config(CONFIG["DINGTALK_WEBHOOK_URL"])
     if dingtalk_urls:
-        dingtalk_urls = limit_accounts(dingtalk_urls, max_accounts, "钉钉")
+        dingtalk_urls = utils.limit_accounts(dingtalk_urls, max_accounts, "钉钉")
         dingtalk_results = []
         for i, url in enumerate(dingtalk_urls):
             if url:
@@ -3865,9 +3158,9 @@ def send_to_notifications(
         results["dingtalk"] = any(dingtalk_results) if dingtalk_results else False
 
     # 发送到企业微信（多账号）
-    wework_urls = parse_multi_account_config(CONFIG["WEWORK_WEBHOOK_URL"])
+    wework_urls = utils.parse_multi_account_config(CONFIG["WEWORK_WEBHOOK_URL"])
     if wework_urls:
-        wework_urls = limit_accounts(wework_urls, max_accounts, "企业微信")
+        wework_urls = utils.limit_accounts(wework_urls, max_accounts, "企业微信")
         wework_results = []
         for i, url in enumerate(wework_urls):
             if url:
@@ -3879,16 +3172,16 @@ def send_to_notifications(
         results["wework"] = any(wework_results) if wework_results else False
 
     # 发送到 Telegram（多账号，需验证配对）
-    telegram_tokens = parse_multi_account_config(CONFIG["TELEGRAM_BOT_TOKEN"])
-    telegram_chat_ids = parse_multi_account_config(CONFIG["TELEGRAM_CHAT_ID"])
+    telegram_tokens = utils.parse_multi_account_config(CONFIG["TELEGRAM_BOT_TOKEN"])
+    telegram_chat_ids = utils.parse_multi_account_config(CONFIG["TELEGRAM_CHAT_ID"])
     if telegram_tokens and telegram_chat_ids:
-        valid, count = validate_paired_configs(
+        valid, count = utils.validate_paired_configs(
             {"bot_token": telegram_tokens, "chat_id": telegram_chat_ids},
             "Telegram",
             required_keys=["bot_token", "chat_id"]
         )
         if valid and count > 0:
-            telegram_tokens = limit_accounts(telegram_tokens, max_accounts, "Telegram")
+            telegram_tokens = utils.limit_accounts(telegram_tokens, max_accounts, "Telegram")
             telegram_chat_ids = telegram_chat_ids[:len(telegram_tokens)]  # 保持数量一致
             telegram_results = []
             for i in range(len(telegram_tokens)):
@@ -3905,20 +3198,20 @@ def send_to_notifications(
 
     # 发送到 ntfy（多账号，需验证配对）
     ntfy_server_url = CONFIG["NTFY_SERVER_URL"]
-    ntfy_topics = parse_multi_account_config(CONFIG["NTFY_TOPIC"])
-    ntfy_tokens = parse_multi_account_config(CONFIG["NTFY_TOKEN"])
+    ntfy_topics = utils.parse_multi_account_config(CONFIG["NTFY_TOPIC"])
+    ntfy_tokens = utils.parse_multi_account_config(CONFIG["NTFY_TOKEN"])
     if ntfy_server_url and ntfy_topics:
         # 验证 token 和 topic 数量一致（如果配置了 token）
         if ntfy_tokens and len(ntfy_tokens) != len(ntfy_topics):
             print(f"❌ ntfy 配置错误：topic 数量({len(ntfy_topics)})与 token 数量({len(ntfy_tokens)})不一致，跳过 ntfy 推送")
         else:
-            ntfy_topics = limit_accounts(ntfy_topics, max_accounts, "ntfy")
+            ntfy_topics = utils.limit_accounts(ntfy_topics, max_accounts, "ntfy")
             if ntfy_tokens:
                 ntfy_tokens = ntfy_tokens[:len(ntfy_topics)]
             ntfy_results = []
             for i, topic in enumerate(ntfy_topics):
                 if topic:
-                    token = get_account_at_index(ntfy_tokens, i, "") if ntfy_tokens else ""
+                    token = utils.get_account_at_index(ntfy_tokens, i, "") if ntfy_tokens else ""
                     account_label = f"账号{i+1}" if len(ntfy_topics) > 1 else ""
                     result = send_to_ntfy(
                         ntfy_server_url, topic, token, report_data, report_type,
@@ -3928,9 +3221,9 @@ def send_to_notifications(
             results["ntfy"] = any(ntfy_results) if ntfy_results else False
 
     # 发送到 Bark（多账号）
-    bark_urls = parse_multi_account_config(CONFIG["BARK_URL"])
+    bark_urls = utils.parse_multi_account_config(CONFIG["BARK_URL"])
     if bark_urls:
-        bark_urls = limit_accounts(bark_urls, max_accounts, "Bark")
+        bark_urls = utils.limit_accounts(bark_urls, max_accounts, "Bark")
         bark_results = []
         for i, url in enumerate(bark_urls):
             if url:
@@ -3942,9 +3235,9 @@ def send_to_notifications(
         results["bark"] = any(bark_results) if bark_results else False
 
     # 发送到 Slack（多账号）
-    slack_urls = parse_multi_account_config(CONFIG["SLACK_WEBHOOK_URL"])
+    slack_urls = utils.parse_multi_account_config(CONFIG["SLACK_WEBHOOK_URL"])
     if slack_urls:
-        slack_urls = limit_accounts(slack_urls, max_accounts, "Slack")
+        slack_urls = utils.limit_accounts(slack_urls, max_accounts, "Slack")
         slack_results = []
         for i, url in enumerate(slack_urls):
             if url:
@@ -3981,7 +3274,7 @@ def send_to_notifications(
         and CONFIG["PUSH_WINDOW"]["ONCE_PER_DAY"]
         and any(results.values())
     ):
-        push_manager = PushRecordManager()
+        push_manager = PushRecordManager(CONFIG)
         push_manager.record_push(report_type)
 
     return results
@@ -4032,7 +3325,7 @@ def send_to_feishu(
         total_titles = sum(
             len(stat["titles"]) for stat in report_data["stats"] if stat["count"] > 0
         )
-        now = get_beijing_time()
+        now = utils.get_beijing_time()
 
         payload = {
             "msg_type": "text",
@@ -4395,9 +3688,9 @@ def send_to_email(
             else:
                 # 其他端口优先尝试 TLS（更安全，更广泛支持）
                 use_tls = True
-        elif domain in SMTP_CONFIGS:
+        elif domain in config.SMTP_CONFIGS:
             # 使用预设配置
-            config = SMTP_CONFIGS[domain]
+            config = config.SMTP_CONFIGS[domain]
             smtp_server = config["server"]
             smtp_port = config["port"]
             use_tls = config["encryption"] == "TLS"
@@ -4421,7 +3714,7 @@ def send_to_email(
             msg["To"] = ", ".join(recipients)
 
         # 设置邮件主题
-        now = get_beijing_time()
+        now = utils.get_beijing_time()
         subject = f"TrendRadar 热点分析报告 - {report_type} - {now.strftime('%m月%d日 %H:%M')}"
         msg["Subject"] = Header(subject, "utf-8")
 
@@ -4918,7 +4211,7 @@ class NewsAnalyzer:
         self.update_info = None
         self.proxy_url = None
         self._setup_proxy()
-        self.data_fetcher = DataFetcher(self.proxy_url)
+        self.data_fetcher = DataFetcher(CONFIG["REQUEST_INTERVAL"], self.proxy_url)
 
         if self.is_github_actions:
             self._check_version_update()
@@ -4953,7 +4246,7 @@ class NewsAnalyzer:
     def _check_version_update(self) -> None:
         """检查版本更新"""
         try:
-            need_update, remote_version = check_version_update(
+            need_update, remote_version = utils.check_version_update(
                 VERSION, CONFIG["VERSION_CHECK_URL"], self.proxy_url
             )
 
@@ -5234,7 +4527,7 @@ class NewsAnalyzer:
 
     def _initialize_and_check_config(self) -> None:
         """通用初始化和配置检查"""
-        now = get_beijing_time()
+        now = utils.get_beijing_time()
         print(f"当前北京时间: {now.strftime('%Y-%m-%d %H:%M:%S')}")
 
         if not CONFIG["ENABLE_CRAWLER"]:
@@ -5266,7 +4559,7 @@ class NewsAnalyzer:
             f"配置的监控平台: {[p.get('name', p['id']) for p in CONFIG['PLATFORMS']]}"
         )
         print(f"开始爬取数据，请求间隔 {self.request_interval} 毫秒")
-        ensure_directory_exists("output")
+        utils.ensure_directory_exists("output")
 
         results, id_to_name, failed_ids = self.data_fetcher.crawl_websites(
             ids, self.request_interval
