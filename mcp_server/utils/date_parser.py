@@ -9,8 +9,10 @@ from datetime import datetime, timedelta
 from typing import Tuple, Dict, Optional
 
 from .errors import InvalidParameterError
+from trendradar.logging_config import get_logger
 
 
+logger = get_logger(__name__)
 class DateParser:
     """日期解析器类"""
 

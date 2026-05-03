@@ -2,17 +2,18 @@
 
 import os
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Tuple, Optional
 
 import pytz
 import yaml
+from trendradar.logging_config import get_logger
 
 
 VERSION = "3.5.0"
 
 
 # === SMTP邮件配置 ===
-SMTP_CONFIGS = {
+SMTP_CONFIGS: Dict[str, Dict[str, Any]] = {
     # Gmail（使用 STARTTLS）
     "gmail.com": {"server": "smtp.gmail.com", "port": 587, "encryption": "TLS"},
     # QQ邮箱（使用 SSL，更稳定）
@@ -44,6 +45,7 @@ SMTP_CONFIGS = {
 
 
 # === 多账号推送工具函数 ===
+logger = get_logger(__name__)
 def parse_multi_account_config(config_value: str, separator: str = ";") -> List[str]:
     """
     解析多账号配置，返回账号列表
@@ -98,9 +100,9 @@ def validate_paired_configs(
     unique_lengths = set(lengths.values())
 
     if len(unique_lengths) > 1:
-        print(f"❌ {channel_name} 配置错误：配对配置数量不一致，将跳过该渠道推送")
+        logger.error(f"❌ {channel_name} 配置错误：配对配置数量不一致，将跳过该渠道推送")
         for key, length in lengths.items():
-            print(f"   - {key}: {length} 个")
+            logger.info(f"   - {key}: {length} 个")
         return False, 0
 
     return True, list(unique_lengths)[0] if unique_lengths else 0
@@ -123,8 +125,8 @@ def limit_accounts(
         限制后的账号列表
     """
     if len(accounts) > max_count:
-        print(f"⚠️ {channel_name} 配置了 {len(accounts)} 个账号，超过最大限制 {max_count}，只使用前 {max_count} 个")
-        print(f"   ⚠️ 警告：如果您是 fork 用户，过多账号可能导致 GitHub Actions 运行时间过长，存在账号风险")
+        logger.warning(f"⚠️ {channel_name} 配置了 {len(accounts)} 个账号，超过最大限制 {max_count}，只使用前 {max_count} 个")
+        logger.warning(f"   ⚠️ 警告：如果您是 fork 用户，过多账号可能导致 GitHub Actions 运行时间过长，存在账号风险")
         return accounts[:max_count]
     return accounts
 
@@ -157,7 +159,7 @@ def load_config():
     with open(config_path, "r", encoding="utf-8") as f:
         config_data = yaml.safe_load(f)
 
-    print(f"配置文件加载成功: {config_path}")
+    logger.info(f"配置文件加载成功: {config_path}")
 
     # 构建配置
     config = {
@@ -375,9 +377,9 @@ def load_config():
         notification_sources.append(f"Slack({slack_source}, {count}个账号)")
 
     if notification_sources:
-        print(f"通知渠道配置来源: {', '.join(notification_sources)}")
-        print(f"每个渠道最大账号数: {max_accounts}")
+        logger.info(f"通知渠道配置来源: {', '.join(notification_sources)}")
+        logger.info(f"每个渠道最大账号数: {max_accounts}")
     else:
-        print("未配置任何通知渠道")
+        logger.info("未配置任何通知渠道")
 
     return config

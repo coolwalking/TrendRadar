@@ -6,7 +6,7 @@ TrendRadar MCP Server - FastMCP 2.0 实现
 """
 
 import json
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 
 from fastmcp import FastMCP
 
@@ -17,16 +17,20 @@ from .tools.config_mgmt import ConfigManagementTools
 from .tools.system import SystemManagementTools
 from .utils.date_parser import DateParser
 from .utils.errors import MCPError
+from trendradar.logging_config import get_logger
 
 
 # 创建 FastMCP 2.0 应用
 mcp = FastMCP('trendradar-news')
 
 # 全局工具实例（在第一次请求时初始化）
-_tools_instances = {}
+_tools_instances: Dict[str, Any] = {}
+
+logger = get_logger(__name__)
 
 
-def _get_tools(project_root: Optional[str] = None):
+
+def _get_tools(project_root: Optional[str] = None) -> Dict[str, Any]:
     """获取或创建工具实例（单例模式）"""
     if not _tools_instances:
         _tools_instances['data'] = DataQueryTools(project_root)
@@ -99,6 +103,7 @@ async def resolve_date_range(
             "error": e.to_dict()
         }, ensure_ascii=False, indent=2)
     except Exception as e:
+        logger.exception(f"resolve_date_range 未处理异常: {e}")
         return json.dumps({
             "success": False,
             "error": {
@@ -678,51 +683,45 @@ def run_server(
     _get_tools(project_root)
 
     # 打印启动信息
-    print()
-    print("=" * 60)
-    print("  TrendRadar MCP Server - FastMCP 2.0")
-    print("=" * 60)
-    print(f"  传输模式: {transport.upper()}")
+    logger.info("=" * 60)
+    logger.info("=" * 60)
+    logger.info("  TrendRadar MCP Server - FastMCP 2.0")
+    logger.info("=" * 60)
+    logger.info(f"  传输模式: {transport.upper()}")
 
     if transport == 'stdio':
-        print("  协议: MCP over stdio (标准输入输出)")
-        print("  说明: 通过标准输入输出与 MCP 客户端通信")
+        logger.info("  协议: MCP over stdio (标准输入输出)")
+        logger.info("  说明: 通过标准输入输出与 MCP 客户端通信")
     elif transport == 'http':
-        print(f"  协议: MCP over HTTP (生产环境)")
-        print(f"  服务器监听: {host}:{port}")
+        logger.info(f"  协议: MCP over HTTP (生产环境)")
+        logger.info(f"  服务器监听: {host}:{port}")
 
     if project_root:
-        print(f"  项目目录: {project_root}")
+        logger.info(f"  项目目录: {project_root}")
     else:
-        print("  项目目录: 当前目录")
+        logger.info("  项目目录: 当前目录")
 
-    print()
-    print("  已注册的工具:")
-    print("    === 日期解析工具（推荐优先调用）===")
-    print("    0. resolve_date_range       - 解析自然语言日期为标准格式")
-    print()
-    print("    === 基础数据查询（P0核心）===")
-    print("    1. get_latest_news        - 获取最新新闻")
-    print("    2. get_news_by_date       - 按日期查询新闻（支持自然语言）")
-    print("    3. get_trending_topics    - 获取趋势话题")
-    print()
-    print("    === 智能检索工具 ===")
-    print("    4. search_news                  - 统一新闻搜索（关键词/模糊/实体）")
-    print("    5. search_related_news_history  - 历史相关新闻检索")
-    print()
-    print("    === 高级数据分析 ===")
-    print("    6. analyze_topic_trend      - 统一话题趋势分析（热度/生命周期/爆火/预测）")
-    print("    7. analyze_data_insights    - 统一数据洞察分析（平台对比/活跃度/关键词共现）")
-    print("    8. analyze_sentiment        - 情感倾向分析")
-    print("    9. find_similar_news        - 相似新闻查找")
-    print("    10. generate_summary_report - 每日/每周摘要生成")
-    print()
-    print("    === 配置与系统管理 ===")
-    print("    11. get_current_config      - 获取当前系统配置")
-    print("    12. get_system_status       - 获取系统运行状态")
-    print("    13. trigger_crawl           - 手动触发爬取任务")
-    print("=" * 60)
-    print()
+    logger.info("  已注册的工具:")
+    logger.info("    === 日期解析工具（推荐优先调用）===")
+    logger.info("    0. resolve_date_range       - 解析自然语言日期为标准格式")
+    logger.info("    === 基础数据查询（P0核心）===")
+    logger.info("    1. get_latest_news        - 获取最新新闻")
+    logger.info("    2. get_news_by_date       - 按日期查询新闻（支持自然语言）")
+    logger.info("    3. get_trending_topics    - 获取趋势话题")
+    logger.info("    === 智能检索工具 ===")
+    logger.info("    4. search_news                  - 统一新闻搜索（关键词/模糊/实体）")
+    logger.info("    5. search_related_news_history  - 历史相关新闻检索")
+    logger.info("    === 高级数据分析 ===")
+    logger.info("    6. analyze_topic_trend      - 统一话题趋势分析（热度/生命周期/爆火/预测）")
+    logger.info("    7. analyze_data_insights    - 统一数据洞察分析（平台对比/活跃度/关键词共现）")
+    logger.info("    8. analyze_sentiment        - 情感倾向分析")
+    logger.info("    9. find_similar_news        - 相似新闻查找")
+    logger.info("    10. generate_summary_report - 每日/每周摘要生成")
+    logger.info("    === 配置与系统管理 ===")
+    logger.info("    11. get_current_config      - 获取当前系统配置")
+    logger.info("    12. get_system_status       - 获取系统运行状态")
+    logger.info("    13. trigger_crawl           - 手动触发爬取任务")
+    logger.info("=" * 60)
 
     # 根据传输模式运行服务器
     if transport == 'stdio':

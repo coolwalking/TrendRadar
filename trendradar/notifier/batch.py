@@ -1,3 +1,11 @@
+from typing import Any, Dict, List, Optional
+
+from trendradar import utils
+from trendradar.utils import format_title_for_platform
+from trendradar.logging_config import get_logger
+
+
+logger = get_logger(__name__)
 def _get_batch_header(format_type: str, batch_num: int, total_batches: int) -> str:
     """根据 format_type 生成对应格式的批次头部"""
     if format_type == "telegram":
@@ -72,9 +80,7 @@ def add_batch_headers(
 
         # 如果超出，截断到安全大小
         if content_size > max_content_size:
-            print(
-                f"警告：{format_type} 第 {i}/{total} 批次内容({content_size}字节) + 头部({header_size}字节) 超出限制({max_bytes}字节)，截断到 {max_content_size} 字节"
-            )
+            logger.warning(f"警告：内容超出限制，从 {content_size} 字节截断到 {max_content_size} 字节")
             content = _truncate_to_bytes(content, max_content_size)
 
         result.append(header + content)
@@ -83,22 +89,24 @@ def add_batch_headers(
 
 
 def split_content_into_batches(
-    report_data: Dict,
+    report_data: Dict[str, Any],
     format_type: str,
-    update_info: Optional[Dict] = None,
-    max_bytes: int = None,
+    update_info: Optional[Dict[str, Any]] = None,
+    max_bytes: Optional[int] = None,
     mode: str = "daily",
+    config: Optional[Dict[str, Any]] = None,
 ) -> List[str]:
     """分批处理消息内容，确保词组标题+至少第一条新闻的完整性"""
+    cfg = config or {}
     if max_bytes is None:
         if format_type == "dingtalk":
-            max_bytes = CONFIG.get("DINGTALK_BATCH_SIZE", 20000)
+            max_bytes = cfg.get("DINGTALK_BATCH_SIZE", 20000)
         elif format_type == "feishu":
-            max_bytes = CONFIG.get("FEISHU_BATCH_SIZE", 29000)
+            max_bytes = cfg.get("FEISHU_BATCH_SIZE", 29000)
         elif format_type == "ntfy":
             max_bytes = 3800
         else:
-            max_bytes = CONFIG.get("MESSAGE_BATCH_SIZE", 4000)
+            max_bytes = cfg.get("MESSAGE_BATCH_SIZE", 4000)
 
     batches = []
 
@@ -185,7 +193,7 @@ def split_content_into_batches(
         return batches
 
     # 定义处理热点词汇统计的函数
-    def process_stats_section(current_batch, current_batch_has_content, batches):
+    def process_stats_section(current_batch: str, current_batch_has_content: bool, batches: List[str]) -> tuple[str, bool, List[str]]:
         """处理热点词汇统计"""
         if not report_data["stats"]:
             return current_batch, current_batch_has_content, batches
@@ -384,7 +392,7 @@ def split_content_into_batches(
                 elif format_type == "ntfy":
                     separator = f"\n\n"
                 elif format_type == "feishu":
-                    separator = f"\n{CONFIG['FEISHU_MESSAGE_SEPARATOR']}\n\n"
+                    separator = f"\n{cfg['FEISHU_MESSAGE_SEPARATOR']}\n\n"
                 elif format_type == "dingtalk":
                     separator = f"\n---\n\n"
                 elif format_type == "slack":
@@ -400,7 +408,7 @@ def split_content_into_batches(
         return current_batch, current_batch_has_content, batches
 
     # 定义处理新增新闻的函数
-    def process_new_titles_section(current_batch, current_batch_has_content, batches):
+    def process_new_titles_section(current_batch: str, current_batch_has_content: bool, batches: List[str]) -> tuple[str, bool, List[str]]:
         """处理新增新闻"""
         if not report_data["new_titles"]:
             return current_batch, current_batch_has_content, batches
@@ -415,7 +423,7 @@ def split_content_into_batches(
         elif format_type == "ntfy":
             new_header = f"\n\n🆕 **本次新增热点新闻** (共 {report_data['total_new_count']} 条)\n\n"
         elif format_type == "feishu":
-            new_header = f"\n{CONFIG['FEISHU_MESSAGE_SEPARATOR']}\n\n🆕 **本次新增热点新闻** (共 {report_data['total_new_count']} 条)\n\n"
+            new_header = f"\n{cfg['FEISHU_MESSAGE_SEPARATOR']}\n\n🆕 **本次新增热点新闻** (共 {report_data['total_new_count']} 条)\n\n"
         elif format_type == "dingtalk":
             new_header = f"\n---\n\n🆕 **本次新增热点新闻** (共 {report_data['total_new_count']} 条)\n\n"
         elif format_type == "slack":
@@ -549,7 +557,7 @@ def split_content_into_batches(
         return current_batch, current_batch_has_content, batches
 
     # 根据配置决定处理顺序
-    if CONFIG.get("REVERSE_CONTENT_ORDER", False):
+    if cfg.get("REVERSE_CONTENT_ORDER", False):
         # 新增热点在前，热点词汇统计在后
         current_batch, current_batch_has_content, batches = process_new_titles_section(
             current_batch, current_batch_has_content, batches
@@ -575,7 +583,7 @@ def split_content_into_batches(
         elif format_type == "ntfy":
             failed_header = f"\n\n⚠️ **数据获取失败的平台：**\n\n"
         elif format_type == "feishu":
-            failed_header = f"\n{CONFIG['FEISHU_MESSAGE_SEPARATOR']}\n\n⚠️ **数据获取失败的平台：**\n\n"
+            failed_header = f"\n{cfg['FEISHU_MESSAGE_SEPARATOR']}\n\n⚠️ **数据获取失败的平台：**\n\n"
         elif format_type == "dingtalk":
             failed_header = f"\n---\n\n⚠️ **数据获取失败的平台：**\n\n"
 
@@ -618,5 +626,4 @@ def split_content_into_batches(
         batches.append(current_batch + base_footer)
 
     return batches
-
 

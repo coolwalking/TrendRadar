@@ -17,12 +17,14 @@ from ..utils.validators import (
     validate_date_query
 )
 from ..utils.errors import MCPError
+from trendradar.logging_config import get_logger
 
 
+logger = get_logger(__name__)
 class DataQueryTools:
     """数据查询工具类"""
 
-    def __init__(self, project_root: str = None):
+    def __init__(self, project_root: Optional[str] = None):
         """
         初始化数据查询工具
 
@@ -51,7 +53,7 @@ class DataQueryTools:
         Example:
             >>> tools = DataQueryTools()
             >>> result = tools.get_latest_news(platforms=['zhihu'], limit=10)
-            >>> print(result['total'])
+            >>> logger.info(result['total'])
             10
         """
         try:
@@ -79,6 +81,7 @@ class DataQueryTools:
                 "error": e.to_dict()
             }
         except Exception as e:
+            logger.exception(f"Unexpected error: {e}")
             return {
                 "success": False,
                 "error": {
@@ -113,7 +116,7 @@ class DataQueryTools:
             ...     date_range={"start": "2025-11-08", "end": "2025-11-17"},
             ...     limit=50
             ... )
-            >>> print(result['total'])
+            >>> logger.info(result['total'])
         """
         try:
             # 参数验证
@@ -143,6 +146,7 @@ class DataQueryTools:
                 "error": e.to_dict()
             }
         except Exception as e:
+            logger.exception(f"Unexpected error: {e}")
             return {
                 "success": False,
                 "error": {
@@ -173,7 +177,7 @@ class DataQueryTools:
         Example:
             >>> tools = DataQueryTools()
             >>> result = tools.get_trending_topics(top_n=5, mode="current")
-            >>> print(len(result['topics']))
+            >>> logger.info(len(result['topics']))
             5
             >>> # 返回的是你在 frequency_words.txt 中设置的关注词的频率统计
         """
@@ -200,6 +204,7 @@ class DataQueryTools:
                 "error": e.to_dict()
             }
         except Exception as e:
+            logger.exception(f"Unexpected error: {e}")
             return {
                 "success": False,
                 "error": {
@@ -240,7 +245,7 @@ class DataQueryTools:
             ...     platforms=['zhihu'],
             ...     limit=20
             ... )
-            >>> print(result['total'])
+            >>> logger.info(result['total'])
             20
         """
         try:
@@ -274,6 +279,7 @@ class DataQueryTools:
                 "error": e.to_dict()
             }
         except Exception as e:
+            logger.exception(f"Unexpected error: {e}")
             return {
                 "success": False,
                 "error": {
@@ -281,4 +287,3 @@ class DataQueryTools:
                     "message": str(e)
                 }
             }
-

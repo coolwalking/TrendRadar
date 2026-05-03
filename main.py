@@ -4,7 +4,7 @@ import os
 import webbrowser
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional, Union
+from typing import Any, Dict, List, Tuple, Optional, Union
 
 from trendradar.config import load_config, SMTP_CONFIGS, VERSION
 from trendradar import utils
@@ -12,11 +12,15 @@ from trendradar.records import PushRecordManager
 from trendradar.fetcher import DataFetcher
 from trendradar.notifier import send_to_notifications, prepare_report_data
 from trendradar.utils import load_frequency_words, matches_word_groups
+from trendradar.logging_config import configure_logging, get_logger
 
-print("正在加载配置...")
+configure_logging()
+logger = get_logger(__name__)
+
+logger.info("正在加载配置...")
 CONFIG = load_config()
-print(f"TrendRadar v{VERSION} 配置加载完成")
-print(f"监控平台数量: {len(CONFIG['PLATFORMS'])}")
+logger.info(f"TrendRadar v{VERSION} 配置加载完成")
+logger.info(f"监控平台数量: {len(CONFIG['PLATFORMS'])}")
 
 
 
@@ -74,8 +78,8 @@ def save_titles_to_file(results: Dict, id_to_name: Dict, failed_ids: List) -> st
 
 def parse_file_titles(file_path: Path) -> Tuple[Dict, Dict]:
     """解析单个txt文件的标题数据，返回(titles_by_id, id_to_name)"""
-    titles_by_id = {}
-    id_to_name = {}
+    titles_by_id: Dict[str, Dict[str, Any]] = {}
+    id_to_name: Dict[str, str] = {}
 
     with open(file_path, "r", encoding="utf-8") as f:
         content = f.read()
@@ -137,7 +141,7 @@ def parse_file_titles(file_path: Path) -> Tuple[Dict, Dict]:
                         }
 
                     except Exception as e:
-                        print(f"解析标题行出错: {line}, 错误: {e}")
+                        logger.exception(f"解析标题行出错: {line}, 错误: {e}")
 
     return titles_by_id, id_to_name
 
@@ -152,9 +156,9 @@ def read_all_today_titles(
     if not txt_dir.exists():
         return {}, {}, {}
 
-    all_results = {}
-    final_id_to_name = {}
-    title_info = {}
+    all_results: Dict[str, Dict[str, Any]] = {}
+    final_id_to_name: Dict[str, str] = {}
+    title_info: Dict[str, Dict[str, Any]] = {}
 
     files = sorted([f for f in txt_dir.iterdir() if f.suffix == ".txt"])
 
@@ -284,7 +288,7 @@ def detect_latest_new_titles(current_platform_ids: Optional[List[str]] = None) -
         latest_titles = filtered_latest_titles
 
     # 汇总历史标题（按平台过滤）
-    historical_titles = {}
+    historical_titles: Dict[str, set[str]] = {}
     for file_path in files[:-1]:
         historical_data, _ = parse_file_titles(file_path)
 
@@ -303,10 +307,10 @@ def detect_latest_new_titles(current_platform_ids: Optional[List[str]] = None) -
                 historical_titles[source_id].add(title)
 
     # 找出新增标题
-    new_titles = {}
+    new_titles: Dict[str, Dict[str, Any]] = {}
     for source_id, latest_source_titles in latest_titles.items():
-        historical_set = historical_titles.get(source_id, set())
-        source_new_titles = {}
+        historical_set: set[str] = historical_titles.get(source_id, set())
+        source_new_titles: Dict[str, Any] = {}
 
         for title, title_data in latest_source_titles.items():
             if title not in historical_set:
@@ -423,7 +427,7 @@ def count_word_frequency(
 
     # 如果没有配置词组，创建一个包含所有新闻的虚拟词组
     if not word_groups:
-        print("频率词配置为空，将显示所有新闻")
+        logger.info("频率词配置为空，将显示所有新闻")
         word_groups = [{"required": [], "normal": [], "group_key": "全部新闻"}]
         filter_words = []  # 清空过滤词，显示所有新闻
 
@@ -464,7 +468,7 @@ def count_word_frequency(
                         if filtered_titles:
                             results_to_process[source_id] = filtered_titles
 
-                print(
+                logger.info(
                     f"当前榜单模式：最新时间 {latest_time}，筛选出 {sum(len(titles) for titles in results_to_process.values())} 条当前榜单新闻"
                 )
             else:
@@ -482,11 +486,11 @@ def count_word_frequency(
             if len(word_groups) == 1 and word_groups[0]["group_key"] == "全部新闻"
             else "频率词过滤"
         )
-        print(f"当日汇总模式：处理 {total_input_news} 条新闻，模式：{filter_status}")
+        logger.info(f"当日汇总模式：处理 {total_input_news} 条新闻，模式：{filter_status}")
 
-    word_stats = {}
+    word_stats: Dict[str, Any] = {}
     total_titles = 0
-    processed_titles = {}
+    processed_titles: Dict[str, Dict[str, bool]] = {}
     matched_new_count = 0
 
     if title_info is None:
@@ -645,7 +649,7 @@ def count_word_frequency(
                 if len(word_groups) == 1 and word_groups[0]["group_key"] == "全部新闻"
                 else "频率词匹配"
             )
-            print(
+            logger.info(
                 f"增量模式：当天第一次爬取，{total_input_news} 条新闻中有 {matched_new_count} 条{filter_status}"
             )
         else:
@@ -657,13 +661,13 @@ def count_word_frequency(
                     and word_groups[0]["group_key"] == "全部新闻"
                     else "匹配频率词"
                 )
-                print(
+                logger.info(
                     f"增量模式：{total_new_count} 条新增新闻中，有 {matched_new_count} 条{filter_status}"
                 )
                 if matched_new_count == 0 and len(word_groups) > 1:
-                    print("增量模式：没有新增新闻匹配频率词，将不会发送通知")
+                    logger.info("增量模式：没有新增新闻匹配频率词，将不会发送通知")
             else:
-                print("增量模式：未检测到新增新闻")
+                logger.info("增量模式：未检测到新增新闻")
     elif mode == "current":
         total_input_news = sum(len(titles) for titles in results_to_process.values())
         if is_first_today:
@@ -672,7 +676,7 @@ def count_word_frequency(
                 if len(word_groups) == 1 and word_groups[0]["group_key"] == "全部新闻"
                 else "频率词匹配"
             )
-            print(
+            logger.info(
                 f"当前榜单模式：当天第一次爬取，{total_input_news} 条当前榜单新闻中有 {matched_new_count} 条{filter_status}"
             )
         else:
@@ -682,7 +686,7 @@ def count_word_frequency(
                 if len(word_groups) == 1 and word_groups[0]["group_key"] == "全部新闻"
                 else "频率词匹配"
             )
-            print(
+            logger.info(
                 f"当前榜单模式：{total_input_news} 条当前榜单新闻中有 {matched_count} 条{filter_status}"
             )
 
@@ -954,7 +958,7 @@ def generate_html_report(
 
     file_path = utils.get_output_path("html", filename)
 
-    report_data = prepare_report_data(stats, failed_ids, new_titles, id_to_name, mode)
+    report_data = prepare_report_data(CONFIG, stats, failed_ids, new_titles, id_to_name, mode)
 
     html_content = render_html_content(
         report_data, total_titles, is_daily_summary, mode, update_info
@@ -2271,6 +2275,7 @@ class NewsAnalyzer:
 
             return False
         except Exception:
+            logger.exception("Docker环境检测失败")
             return False
 
     def _should_open_browser(self) -> bool:
@@ -2281,11 +2286,11 @@ class NewsAnalyzer:
         """设置代理配置"""
         if not self.is_github_actions and CONFIG["USE_PROXY"]:
             self.proxy_url = CONFIG["DEFAULT_PROXY"]
-            print("本地环境，使用代理")
+            logger.info("本地环境，使用代理")
         elif not self.is_github_actions and not CONFIG["USE_PROXY"]:
-            print("本地环境，未启用代理")
+            logger.info("本地环境，未启用代理")
         else:
-            print("GitHub Actions环境，不使用代理")
+            logger.info("GitHub Actions环境，不使用代理")
 
     def _check_version_update(self) -> None:
         """检查版本更新"""
@@ -2299,11 +2304,11 @@ class NewsAnalyzer:
                     "current_version": VERSION,
                     "remote_version": remote_version,
                 }
-                print(f"发现新版本: {remote_version} (当前: {VERSION})")
+                logger.info(f"发现新版本: {remote_version} (当前: {VERSION})")
             else:
-                print("版本检查完成，当前为最新版本")
+                logger.info("版本检查完成，当前为最新版本")
         except Exception as e:
-            print(f"版本检查出错: {e}")
+            logger.exception(f"版本检查出错: {e}")
 
     def _get_mode_strategy(self) -> Dict:
         """获取当前模式的策略配置"""
@@ -2345,7 +2350,7 @@ class NewsAnalyzer:
 
     def _load_analysis_data(
         self,
-    ) -> Optional[Tuple[Dict, Dict, Dict, Dict, List, List]]:
+    ) -> Optional[Tuple[Dict, Dict, Dict, Dict, List, List, List]]:
         """统一的数据加载和预处理，使用当前监控平台列表过滤历史数据"""
         try:
             # 获取当前配置的监控平台ID列表
@@ -2353,18 +2358,18 @@ class NewsAnalyzer:
             for platform in CONFIG["PLATFORMS"]:
                 current_platform_ids.append(platform["id"])
 
-            print(f"当前监控平台: {current_platform_ids}")
+            logger.info(f"当前监控平台: {current_platform_ids}")
 
             all_results, id_to_name, title_info = read_all_today_titles(
                 current_platform_ids
             )
 
             if not all_results:
-                print("没有找到当天的数据")
+                logger.info("没有找到当天的数据")
                 return None
 
             total_titles = sum(len(titles) for titles in all_results.values())
-            print(f"读取到 {total_titles} 个标题（已按当前监控平台过滤）")
+            logger.info(f"读取到 {total_titles} 个标题（已按当前监控平台过滤）")
 
             new_titles = detect_latest_new_titles(current_platform_ids)
             word_groups, filter_words, global_filters = load_frequency_words()
@@ -2379,12 +2384,12 @@ class NewsAnalyzer:
                 global_filters,
             )
         except Exception as e:
-            print(f"数据加载失败: {e}")
+            logger.exception(f"数据加载失败: {e}")
             return None
 
     def _prepare_current_title_info(self, results: Dict, time_info: str) -> Dict:
         """从当前抓取结果构建标题信息"""
-        title_info = {}
+        title_info: Dict[str, Dict[str, Any]] = {}
         for source_id, titles_data in results.items():
             title_info[source_id] = {}
             for title, title_data in titles_data.items():
@@ -2463,6 +2468,7 @@ class NewsAnalyzer:
             and self._has_valid_content(stats, new_titles)
         ):
             send_to_notifications(
+                CONFIG,
                 stats,
                 failed_ids or [],
                 report_type,
@@ -2475,9 +2481,9 @@ class NewsAnalyzer:
             )
             return True
         elif CONFIG["ENABLE_NOTIFICATION"] and not has_notification:
-            print("⚠️ 警告：通知功能已启用但未配置任何通知渠道，将跳过通知发送")
+            logger.warning("⚠️ 警告：通知功能已启用但未配置任何通知渠道，将跳过通知发送")
         elif not CONFIG["ENABLE_NOTIFICATION"]:
-            print(f"跳过{report_type}通知：通知功能已禁用")
+            logger.info(f"跳过{report_type}通知：通知功能已禁用")
         elif (
             CONFIG["ENABLE_NOTIFICATION"]
             and has_notification
@@ -2485,11 +2491,11 @@ class NewsAnalyzer:
         ):
             mode_strategy = self._get_mode_strategy()
             if "实时" in report_type:
-                print(
+                logger.info(
                     f"跳过实时推送通知：{mode_strategy['mode_name']}下未检测到匹配的新闻"
                 )
             else:
-                print(
+                logger.info(
                     f"跳过{mode_strategy['summary_report_type']}通知：未匹配到有效的新闻内容"
                 )
 
@@ -2500,7 +2506,7 @@ class NewsAnalyzer:
         summary_type = (
             "当前榜单汇总" if mode_strategy["summary_mode"] == "current" else "当日汇总"
         )
-        print(f"生成{summary_type}报告...")
+        logger.info(f"生成{summary_type}报告...")
 
         # 加载分析数据
         analysis_data = self._load_analysis_data()
@@ -2524,7 +2530,7 @@ class NewsAnalyzer:
             global_filters=global_filters,
         )
 
-        print(f"{summary_type}报告已生成: {html_file}")
+        logger.info(f"{summary_type}报告已生成: {html_file}")
 
         # 发送通知
         self._send_notification_if_needed(
@@ -2542,7 +2548,7 @@ class NewsAnalyzer:
     def _generate_summary_html(self, mode: str = "daily") -> Optional[str]:
         """生成汇总HTML"""
         summary_type = "当前榜单汇总" if mode == "current" else "当日汇总"
-        print(f"生成{summary_type}HTML...")
+        logger.info(f"生成{summary_type}HTML...")
 
         # 加载分析数据
         analysis_data = self._load_analysis_data()
@@ -2566,29 +2572,29 @@ class NewsAnalyzer:
             global_filters=global_filters,
         )
 
-        print(f"{summary_type}HTML已生成: {html_file}")
+        logger.info(f"{summary_type}HTML已生成: {html_file}")
         return html_file
 
     def _initialize_and_check_config(self) -> None:
         """通用初始化和配置检查"""
         now = utils.get_beijing_time()
-        print(f"当前北京时间: {now.strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"当前北京时间: {now.strftime('%Y-%m-%d %H:%M:%S')}")
 
         if not CONFIG["ENABLE_CRAWLER"]:
-            print("爬虫功能已禁用（ENABLE_CRAWLER=False），程序退出")
+            logger.info("爬虫功能已禁用（ENABLE_CRAWLER=False），程序退出")
             return
 
         has_notification = self._has_notification_configured()
         if not CONFIG["ENABLE_NOTIFICATION"]:
-            print("通知功能已禁用（ENABLE_NOTIFICATION=False），将只进行数据抓取")
+            logger.info("通知功能已禁用（ENABLE_NOTIFICATION=False），将只进行数据抓取")
         elif not has_notification:
-            print("未配置任何通知渠道，将只进行数据抓取，不发送通知")
+            logger.info("未配置任何通知渠道，将只进行数据抓取，不发送通知")
         else:
-            print("通知功能已启用，将发送通知")
+            logger.info("通知功能已启用，将发送通知")
 
         mode_strategy = self._get_mode_strategy()
-        print(f"报告模式: {self.report_mode}")
-        print(f"运行模式: {mode_strategy['description']}")
+        logger.info(f"报告模式: {self.report_mode}")
+        logger.info(f"运行模式: {mode_strategy['description']}")
 
     def _crawl_data(self) -> Tuple[Dict, Dict, List]:
         """执行数据爬取"""
@@ -2599,10 +2605,10 @@ class NewsAnalyzer:
             else:
                 ids.append(platform["id"])
 
-        print(
+        logger.info(
             f"配置的监控平台: {[p.get('name', p['id']) for p in CONFIG['PLATFORMS']]}"
         )
-        print(f"开始爬取数据，请求间隔 {self.request_interval} 毫秒")
+        logger.info(f"开始爬取数据，请求间隔 {self.request_interval} 毫秒")
         utils.ensure_directory_exists("output")
 
         results, id_to_name, failed_ids = self.data_fetcher.crawl_websites(
@@ -2610,7 +2616,7 @@ class NewsAnalyzer:
         )
 
         title_file = save_titles_to_file(results, id_to_name, failed_ids)
-        print(f"标题已保存到: {title_file}")
+        logger.info(f"标题已保存到: {title_file}")
 
         return results, id_to_name, failed_ids
 
@@ -2640,7 +2646,7 @@ class NewsAnalyzer:
                     _,
                 ) = analysis_data
 
-                print(
+                logger.info(
                     f"current模式：使用过滤后的历史数据，包含平台：{list(all_results.keys())}"
                 )
 
@@ -2658,7 +2664,7 @@ class NewsAnalyzer:
 
                 combined_id_to_name = {**historical_id_to_name, **id_to_name}
 
-                print(f"HTML报告已生成: {html_file}")
+                logger.info(f"HTML报告已生成: {html_file}")
 
                 # 发送实时通知（使用完整历史数据的统计结果）
                 summary_html = None
@@ -2673,7 +2679,7 @@ class NewsAnalyzer:
                         html_file_path=html_file,
                     )
             else:
-                print("❌ 严重错误：无法读取刚保存的数据文件")
+                logger.error("❌ 严重错误：无法读取刚保存的数据文件")
                 raise RuntimeError("数据一致性检查失败：保存后立即读取失败")
         else:
             title_info = self._prepare_current_title_info(results, time_info)
@@ -2688,7 +2694,7 @@ class NewsAnalyzer:
                 failed_ids=failed_ids,
                 global_filters=global_filters,
             )
-            print(f"HTML报告已生成: {html_file}")
+            logger.info(f"HTML报告已生成: {html_file}")
 
             # 发送实时通知（如果需要）
             summary_html = None
@@ -2719,17 +2725,17 @@ class NewsAnalyzer:
         if self._should_open_browser() and html_file:
             if summary_html:
                 summary_url = "file://" + str(Path(summary_html).resolve())
-                print(f"正在打开汇总报告: {summary_url}")
+                logger.info(f"正在打开汇总报告: {summary_url}")
                 webbrowser.open(summary_url)
             else:
                 file_url = "file://" + str(Path(html_file).resolve())
-                print(f"正在打开HTML报告: {file_url}")
+                logger.info(f"正在打开HTML报告: {file_url}")
                 webbrowser.open(file_url)
         elif self.is_docker_container and html_file:
             if summary_html:
-                print(f"汇总报告已生成（Docker环境）: {summary_html}")
+                logger.info(f"汇总报告已生成（Docker环境）: {summary_html}")
             else:
-                print(f"HTML报告已生成（Docker环境）: {html_file}")
+                logger.info(f"HTML报告已生成（Docker环境）: {html_file}")
 
         return summary_html
 
@@ -2745,7 +2751,7 @@ class NewsAnalyzer:
             self._execute_mode_strategy(mode_strategy, results, id_to_name, failed_ids)
 
         except Exception as e:
-            print(f"分析流程执行出错: {e}")
+            logger.exception(f"分析流程执行出错: {e}")
             raise
 
 
@@ -2754,13 +2760,13 @@ def main():
         analyzer = NewsAnalyzer()
         analyzer.run()
     except FileNotFoundError as e:
-        print(f"❌ 配置文件错误: {e}")
-        print("\n请确保以下文件存在:")
-        print("  • config/config.yaml")
-        print("  • config/frequency_words.txt")
-        print("\n参考项目文档进行正确配置")
+        logger.error(f"❌ 配置文件错误: {e}")
+        logger.info("\n请确保以下文件存在:")
+        logger.info("  • config/config.yaml")
+        logger.info("  • config/frequency_words.txt")
+        logger.info("\n参考项目文档进行正确配置")
     except Exception as e:
-        print(f"❌ 程序运行错误: {e}")
+        logger.exception(f"❌ 程序运行错误: {e}")
         raise
 
 

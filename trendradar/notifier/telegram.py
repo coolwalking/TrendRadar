@@ -1,76 +1,60 @@
 # coding=utf-8
 
 import time
-from abc import ABC, abstractmethod
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 import requests
 
-from trendradar import utils
-from trendradar.notifier.batch import split_content_into_batches, add_batch_headers, _get_max_batch_header_size
+from trendradar.notifier.base import BaseNotifier
+from trendradar.notifier.batch import (
+    add_batch_headers,
+    split_content_into_batches,
+    _get_max_batch_header_size,
+)
 from trendradar.logging_config import get_logger
 
 
 logger = get_logger(__name__)
-class BaseNotifier(ABC):
-    """通知渠道基类"""
 
-    def __init__(self, config: Dict):
-        self.config = config
+class TelegramNotifier(BaseNotifier):
+    """Telegram 通知器"""
+
+    def __init__(self, config: Dict, bot_token: str, chat_id: str):
+        super().__init__(config)
+        self.bot_token = bot_token
+        self.chat_id = chat_id
 
     @property
-    @abstractmethod
     def name(self) -> str:
-        """渠道名称"""
-        ...
+        return "Telegram"
 
     @property
-    @abstractmethod
     def batch_size_config_key(self) -> str:
-        """批次大小配置键"""
-        ...
+        return "MESSAGE_BATCH_SIZE"
 
     @property
     def default_batch_size(self) -> int:
-        """默认批次大小（字节）"""
         return 4000
 
-    @property
-    def format_type(self) -> str:
-        """内容格式类型"""
-        return self.name.lower()
-
-    def get_batch_size(self) -> int:
-        """获取实际批次大小"""
-        key = self.batch_size_config_key
-        size = self.config.get(key, self.default_batch_size)
-        header_reserve = _get_max_batch_header_size(self.format_type)
-        return size - header_reserve
-
-    def get_proxies(self, proxy_url: Optional[str]) -> Optional[Dict]:
-        """获取代理配置"""
-        if proxy_url:
-            return {"http": proxy_url, "https": proxy_url}
-        return None
-
-    @abstractmethod
     def build_payload(self, batch_content: str, report_data: Dict, report_type: str) -> Dict:
-        """构建请求体"""
-        ...
+        return {
+            "chat_id": self.chat_id,
+            "text": batch_content,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True,
+        }
 
-    @abstractmethod
     def is_success(self, response: requests.Response) -> bool:
-        """判断响应是否成功"""
-        ...
+        return response.status_code == 200 and response.json().get("ok")
 
-    @abstractmethod
     def get_error_message(self, response: requests.Response) -> str:
-        """获取错误信息"""
-        ...
+        if response.status_code != 200:
+            return f"状态码：{response.status_code}"
+        return response.json().get("description", "未知错误")
 
     def send(
         self,
-        webhook_url: str,
+        _webhook_url: str,
         report_data: Dict,
         report_type: str,
         update_info: Optional[Dict] = None,
@@ -82,6 +66,7 @@ class BaseNotifier(ABC):
         log_prefix = f"{self.name}{account_label}" if account_label else self.name
         proxies = self.get_proxies(proxy_url)
         batch_size = self.get_batch_size()
+        url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
 
         batches = split_content_into_batches(
             report_data,
@@ -97,13 +82,13 @@ class BaseNotifier(ABC):
 
         for i, batch_content in enumerate(batches, 1):
             batch_bytes = len(batch_content.encode("utf-8"))
-            logger.info(f"发送{log_prefix}第 {i}/{len(batches)} 批次，大小：{batch_bytes} 字节 [{report_type}]")
+            logger.info(f"发送{log_prefix}第 {i}/{len(batches)} 批次（{batch_bytes} 字节）")
 
             payload = self.build_payload(batch_content, report_data, report_type)
 
             try:
                 response = requests.post(
-                    webhook_url,
+                    url,
                     headers=self.get_headers(),
                     json=payload,
                     proxies=proxies,
@@ -115,7 +100,7 @@ class BaseNotifier(ABC):
                         time.sleep(self.config.get("BATCH_SEND_INTERVAL", 3))
                 else:
                     error_msg = self.get_error_message(response)
-                    logger.error(f"{log_prefix}第 {i}/{len(batches)} 批次发送失败 [{report_type}]，错误：{error_msg}")
+                    logger.error(f"{log_prefix}第 {i}/{len(batches)} 批次发送失败：{error_msg}")
                     return False
             except Exception as e:
                 logger.exception(f"{log_prefix}第 {i}/{len(batches)} 批次发送出错 [{report_type}]：{e}")
@@ -123,7 +108,3 @@ class BaseNotifier(ABC):
 
         logger.info(f"{log_prefix}所有 {len(batches)} 批次发送完成 [{report_type}]")
         return True
-
-    def get_headers(self) -> Dict:
-        """获取请求头"""
-        return {"Content-Type": "application/json"}

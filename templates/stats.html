@@ -1,0 +1,44 @@
+{% for stat in stats %}
+<div class="word-group">
+    <div class="word-header">
+        <div class="word-info">
+            <div class="word-name">{{ stat.word }}</div>
+            <div class="word-count {% if stat.count >= 10 %}hot{% elif stat.count >= 5 %}warm{% endif %}">{{ stat.count }} 条</div>
+        </div>
+        <div class="word-index">{{ loop.index }}/{{ loop.length }}</div>
+    </div>
+    {% for title_data in stat.titles %}
+    <div class="news-item {% if title_data.is_new %}new{% endif %}">
+        <div class="news-number">{{ loop.index }}</div>
+        <div class="news-content">
+            <div class="news-header">
+                <span class="source-name">{{ title_data.source_name }}</span>
+                {% if title_data.ranks %}
+                    {% set min_rank = title_data.ranks | min %}
+                    {% set max_rank = title_data.ranks | max %}
+                    {% set rank_threshold = title_data.rank_threshold | default(10) %}
+                    <span class="rank-num {% if min_rank <= 3 %}top{% elif min_rank <= rank_threshold %}high{% endif %}">
+                        {% if min_rank == max_rank %}{{ min_rank }}{% else %}{{ min_rank }}-{{ max_rank }}{% endif %}
+                    </span>
+                {% endif %}
+                {% if title_data.time_display %}
+                    {% set simplified_time = title_data.time_display | replace(" ~ ", "~") | replace("[", "") | replace("]", "") %}
+                    <span class="time-info">{{ simplified_time }}</span>
+                {% endif %}
+                {% if title_data.count | default(1) > 1 %}
+                    <span class="count-info">{{ title_data.count }}次</span>
+                {% endif %}
+            </div>
+            <div class="news-title">
+                {% set link_url = title_data.mobile_url | default(title_data.url | default('')) %}
+                {% if link_url %}
+                    <a href="{{ link_url }}" target="_blank" class="news-link">{{ title_data.title }}</a>
+                {% else %}
+                    {{ title_data.title }}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endfor %}

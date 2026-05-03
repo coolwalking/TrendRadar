@@ -59,16 +59,19 @@ notification:
 
   # ⚠️⚠️⚠️ 重要安全警告 / IMPORTANT SECURITY WARNING ⚠️⚠️⚠️
   #
-  # 🔴 请务必妥善保管好 webhooks，不要公开!!!
+  # 🔴 代码已强制要求：所有 webhook、token、密码等敏感信息只能通过环境变量传入
+  # 🔴 填写在下方配置文件中的敏感信息将被忽略，并会在启动时打印安全警告
   # 🔴 如果你以 fork 的方式将本项目部署在 GitHub 上，请勿在下面填写任何 webhooks
   # 🔴 而是将 webhooks 填入 GitHub Secret（Settings → Secrets and variables → Actions）
   # 🔴 否则：
   #    - 轻则：手机上收到大量垃圾广告推送
   #    - 重则：webhook 被滥用造成严重安全隐患（如恶意消息轰炸、钓鱼链接等）
   #
-  # 🔴 NEVER expose webhooks publicly!!!
-  # 🔴 If deploying via GitHub fork, DO NOT fill webhooks below
-  # 🔴 Instead, add them to GitHub Secrets (Settings → Secrets and variables → Actions)
+  # 🔴 SECURITY ENFORCEMENT: Sensitive credentials (webhooks, tokens, passwords)
+  #    MUST be provided via environment variables ONLY.
+  # 🔴 Values written below in this file will be IGNORED and trigger a security warning.
+  # 🔴 If deploying via GitHub fork, DO NOT fill webhooks below.
+  # 🔴 Instead, add them to GitHub Secrets (Settings → Secrets and variables → Actions).
   # 🔴 Consequences of exposure:
   #    - Minor: Spam notifications flooding your devices
   #    - Severe: Webhook abuse leading to security incidents (malicious messages, phishing links, etc.)

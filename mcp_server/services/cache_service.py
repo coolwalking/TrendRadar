@@ -7,8 +7,10 @@
 import time
 from typing import Any, Optional
 from threading import Lock
+from trendradar.logging_config import get_logger
 
 
+logger = get_logger(__name__)
 class CacheService:
     """缓存服务类"""
 

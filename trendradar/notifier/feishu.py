@@ -6,8 +6,10 @@ import requests
 
 from trendradar import utils
 from trendradar.notifier.base import BaseNotifier
+from trendradar.logging_config import get_logger
 
 
+logger = get_logger(__name__)
 class FeishuNotifier(BaseNotifier):
     """飞书通知器"""
 

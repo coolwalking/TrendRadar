@@ -50,11 +50,13 @@ RUN set -ex && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
+COPY pyproject.toml .
+COPY trendradar/ ./trendradar/
+COPY mcp_server/ ./mcp_server/
+COPY templates/ ./templates/
 COPY main.py .
 COPY docker/manage.py .
+RUN pip install --no-cache-dir .
 
 # 复制 entrypoint.sh 并强制转换为 LF 格式
 COPY docker/entrypoint.sh /entrypoint.sh.tmp

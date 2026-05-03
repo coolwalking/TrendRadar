@@ -9,12 +9,14 @@ from typing import Dict, Optional
 from ..services.data_service import DataService
 from ..utils.validators import validate_config_section
 from ..utils.errors import MCPError
+from trendradar.logging_config import get_logger
 
 
+logger = get_logger(__name__)
 class ConfigManagementTools:
     """配置管理工具类"""
 
-    def __init__(self, project_root: str = None):
+    def __init__(self, project_root: Optional[str] = None):
         """
         初始化配置管理工具
 
@@ -36,7 +38,7 @@ class ConfigManagementTools:
         Example:
             >>> tools = ConfigManagementTools()
             >>> result = tools.get_current_config(section="crawler")
-            >>> print(result['crawler']['platforms'])
+            >>> logger.info(result['crawler']['platforms'])
         """
         try:
             # 参数验证
@@ -57,6 +59,7 @@ class ConfigManagementTools:
                 "error": e.to_dict()
             }
         except Exception as e:
+            logger.exception(f"Unexpected error: {e}")
             return {
                 "success": False,
                 "error": {

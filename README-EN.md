@@ -3383,6 +3383,52 @@ flowchart TD
 
 <br>
 
+## 🧪 Development & Testing
+
+### Running Tests
+
+This project uses `pytest` with a minimum coverage threshold of 80%.
+
+```bash
+# Install development dependencies
+pip install -e ".[dev]"
+
+# Run all tests
+pytest
+
+# Run tests with coverage report
+pytest --cov=trendradar --cov-report=html
+```
+
+### Static Type Checking
+
+```bash
+mypy trendradar/ main.py
+```
+
+### Project Structure
+
+```
+trendradar/
+├── config.py          # Configuration loading and management
+├── fetcher.py         # Data crawling
+├── records.py         # Push record management
+├── utils.py           # Common utility functions
+├── logging_config.py  # structlog configuration
+└── notifier/          # Notification channel implementations
+    ├── base.py        # Notifier abstract base class
+    ├── batch.py       # Message batching logic
+    ├── bark.py        # Bark push
+    ├── dingtalk.py    # DingTalk push
+    ├── email.py       # Email push
+    ├── feishu.py      # Feishu push
+    ├── ntfy.py        # ntfy push
+    ├── slack.py       # Slack push
+    ├── telegram.py    # Telegram push
+    └── wework.py      # WeCom push
+mcp_server/            # MCP server implementation
+```
+
 ## 📄 License
 
 GPL-3.0 License

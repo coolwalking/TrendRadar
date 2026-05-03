@@ -10,12 +10,14 @@ from typing import Dict, List, Optional
 from ..services.data_service import DataService
 from ..utils.validators import validate_platforms
 from ..utils.errors import MCPError, CrawlTaskError
+from trendradar.logging_config import get_logger
 
 
+logger = get_logger(__name__)
 class SystemManagementTools:
     """系统管理工具类"""
 
-    def __init__(self, project_root: str = None):
+    def __init__(self, project_root: Optional[str] = None):
         """
         初始化系统管理工具
 
@@ -40,7 +42,7 @@ class SystemManagementTools:
         Example:
             >>> tools = SystemManagementTools()
             >>> result = tools.get_system_status()
-            >>> print(result['system']['version'])
+            >>> logger.info(result['system']['version'])
         """
         try:
             # 获取系统状态
@@ -57,6 +59,7 @@ class SystemManagementTools:
                 "error": e.to_dict()
             }
         except Exception as e:
+            logger.exception(f"Unexpected error: {e}")
             return {
                 "success": False,
                 "error": {
@@ -81,10 +84,10 @@ class SystemManagementTools:
             >>> tools = SystemManagementTools()
             >>> # 临时爬取，不保存
             >>> result = tools.trigger_crawl(platforms=['zhihu', 'weibo'])
-            >>> print(result['data'])
+            >>> logger.info(result['data'])
             >>> # 爬取并保存到本地
             >>> result = tools.trigger_crawl(platforms=['zhihu'], save_to_local=True)
-            >>> print(result['saved_files'])
+            >>> logger.info(result['saved_files'])
         """
         try:
             import json
@@ -140,7 +143,7 @@ class SystemManagementTools:
                 else:
                     ids.append(platform["id"])
 
-            print(f"开始临时爬取，平台: {[p.get('name', p['id']) for p in target_platforms]}")
+            logger.info(f"开始临时爬取，平台: {[p.get('name', p['id']) for p in target_platforms]}")
 
             # 爬取数据
             results = {}
@@ -185,7 +188,7 @@ class SystemManagementTools:
                             raise ValueError(f"响应状态异常: {status}")
 
                         status_info = "最新数据" if status == "success" else "缓存数据"
-                        print(f"获取 {id_value} 成功（{status_info}）")
+                        logger.info(f"获取 {id_value} 成功（{status_info}）")
 
                         # 解析数据
                         results[id_value] = {}
@@ -209,10 +212,10 @@ class SystemManagementTools:
                         retries += 1
                         if retries <= max_retries:
                             wait_time = random.uniform(3, 5)
-                            print(f"请求 {id_value} 失败: {e}. {wait_time:.2f}秒后重试...")
+                            logger.exception(f"请求 {id_value} 失败: {e}. {wait_time:.2f}秒后重试...")
                             time.sleep(wait_time)
                         else:
-                            print(f"请求 {id_value} 失败: {e}")
+                            logger.exception(f"请求 {id_value} 失败: {e}")
                             failed_ids.append(id_value)
 
                 # 请求间隔
@@ -339,9 +342,9 @@ class SystemManagementTools:
                     with open(html_file_path, "w", encoding="utf-8") as f:
                         f.write(html_content)
 
-                    print(f"数据已保存到:")
-                    print(f"  TXT: {txt_file_path}")
-                    print(f"  HTML: {html_file_path}")
+                    logger.info(f"数据已保存到:")
+                    logger.info(f"  TXT: {txt_file_path}")
+                    logger.info(f"  HTML: {html_file_path}")
 
                     result["saved_files"] = {
                         "txt": str(txt_file_path),
@@ -350,7 +353,7 @@ class SystemManagementTools:
                     result["note"] = "数据已持久化到 output 文件夹"
 
                 except Exception as e:
-                    print(f"保存文件失败: {e}")
+                    logger.exception(f"保存文件失败: {e}")
                     result["save_error"] = str(e)
                     result["note"] = "爬取成功但保存失败，数据仅在内存中"
             else:
@@ -365,6 +368,7 @@ class SystemManagementTools:
             }
         except Exception as e:
             import traceback
+            logger.exception(f"Unexpected error during crawl: {e}")
             return {
                 "success": False,
                 "error": {

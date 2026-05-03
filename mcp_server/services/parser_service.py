@@ -13,12 +13,14 @@ import yaml
 
 from ..utils.errors import FileParseError, DataNotFoundError
 from .cache_service import get_cache
+from trendradar.logging_config import get_logger
 
 
+logger = get_logger(__name__)
 class ParserService:
     """文件解析服务类"""
 
-    def __init__(self, project_root: str = None):
+    def __init__(self, project_root: Optional[str] = None):
         """
         初始化解析服务
 
@@ -136,9 +138,11 @@ class ParserService:
 
                             except Exception as e:
                                 # 忽略单行解析错误
+                                logger.exception(f"解析行失败: {e}")
                                 continue
 
         except Exception as e:
+            logger.exception(f"解析文件失败: {e}")
             raise FileParseError(str(file_path), str(e))
 
         return titles_by_id, id_to_name
@@ -244,7 +248,7 @@ class ParserService:
 
             except Exception as e:
                 # 忽略单个文件的解析错误，继续处理其他文件
-                print(f"Warning: 解析文件 {txt_file} 失败: {e}")
+                logger.exception(f"解析文件 {txt_file} 失败: {e}")
                 continue
 
         if not all_titles:
@@ -285,6 +289,7 @@ class ParserService:
                 config_data = yaml.safe_load(f)
             return config_data
         except Exception as e:
+            logger.exception(f"解析配置文件失败: {e}")
             raise FileParseError(str(config_path), str(e))
 
     def parse_frequency_words(self, words_file: str = None) -> List[Dict]:
@@ -350,6 +355,7 @@ class ParserService:
                         word_groups.append(group)
 
         except Exception as e:
+            logger.exception(f"解析关键词文件失败: {e}")
             raise FileParseError(str(words_file), str(e))
 
         return word_groups

@@ -8,17 +8,21 @@ import re
 from collections import Counter
 from datetime import datetime, timedelta
 from difflib import SequenceMatcher
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..services.data_service import DataService
 from ..utils.validators import validate_keyword, validate_limit
 from ..utils.errors import MCPError, InvalidParameterError, DataNotFoundError
+from trendradar.logging_config import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class SearchTools:
     """智能新闻检索工具类"""
 
-    def __init__(self, project_root: str = None):
+    def __init__(self, project_root: Optional[str] = None):
         """
         初始化智能检索工具
 
@@ -101,6 +105,7 @@ class SearchTools:
             if date_range:
                 from ..utils.validators import validate_date_range
                 date_range_tuple = validate_date_range(date_range)
+                assert date_range_tuple is not None
                 start_date, end_date = date_range_tuple
             else:
                 # 不指定日期时，使用最新可用数据日期（而非 datetime.now()）
@@ -172,7 +177,7 @@ class SearchTools:
                 else:
                     message = f"未找到匹配的新闻（{time_desc}）"
 
-                result = {
+                empty_result: Dict[str, Any] = {
                     "success": True,
                     "results": [],
                     "total": 0,
@@ -181,7 +186,7 @@ class SearchTools:
                     "time_range": time_desc,
                     "message": message
                 }
-                return result
+                return empty_result
 
             # 统一排序逻辑
             if sort_by == "relevance":
@@ -203,7 +208,7 @@ class SearchTools:
             else:
                 time_range_desc = f"{start_date.strftime('%Y-%m-%d')} 至 {end_date.strftime('%Y-%m-%d')}"
 
-            result = {
+            result: Dict[str, Any] = {
                 "success": True,
                 "summary": {
                     "total_found": len(all_matches),
@@ -231,6 +236,7 @@ class SearchTools:
                 "error": e.to_dict()
             }
         except Exception as e:
+            logger.exception(f"Unexpected error: {e}")
             return {
                 "success": False,
                 "error": {
@@ -529,7 +535,7 @@ class SearchTools:
             ...     limit=50
             ... )
             >>> for news in result['results']:
-            ...     print(f"{news['date']}: {news['title']} (相似度: {news['similarity_score']})")
+            ...     logger.info(f"{news['date']}: {news['title']} (相似度: {news['similarity_score']})")
         """
         try:
             # 参数验证
@@ -626,7 +632,7 @@ class SearchTools:
                     pass
                 except Exception as e:
                     # 记录错误但继续处理其他日期
-                    print(f"Warning: 处理日期 {current_date.strftime('%Y-%m-%d')} 时出错: {e}")
+                    logger.exception(f"处理日期 {current_date.strftime('%Y-%m-%d')} 时出错: {e}")
 
                 # 移动到下一天
                 current_date += timedelta(days=1)
@@ -692,6 +698,7 @@ class SearchTools:
                 "error": e.to_dict()
             }
         except Exception as e:
+            logger.exception(f"Unexpected error: {e}")
             return {
                 "success": False,
                 "error": {

@@ -11,8 +11,10 @@ import yaml
 
 from .errors import InvalidParameterError
 from .date_parser import DateParser
+from trendradar.logging_config import get_logger
 
 
+logger = get_logger(__name__)
 def get_supported_platforms() -> List[str]:
     """
     从 config.yaml 动态获取支持的平台列表
@@ -36,7 +38,7 @@ def get_supported_platforms() -> List[str]:
             return [p['id'] for p in platforms if 'id' in p]
     except Exception as e:
         # 降级方案：返回空列表，允许所有平台
-        print(f"警告：无法加载平台配置 ({config_path}): {e}")
+        logger.warning(f"警告：无法加载平台配置 ({config_path}): {e}")
         return []
 
 
@@ -73,7 +75,7 @@ def validate_platforms(platforms: Optional[List[str]]) -> List[str]:
 
     # 如果配置加载失败（supported_platforms为空），允许所有平台通过
     if not supported_platforms:
-        print("警告：平台配置未加载，跳过平台验证")
+        logger.warning("警告：平台配置未加载，跳过平台验证")
         return platforms
 
     # 验证每个平台是否在配置中
@@ -348,4 +350,3 @@ def validate_date_query(
     DateParser.validate_date_not_too_old(parsed_date, max_days=max_days_ago)
 
     return parsed_date
-

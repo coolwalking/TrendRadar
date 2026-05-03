@@ -5,8 +5,10 @@
 """
 
 from typing import Optional
+from trendradar.logging_config import get_logger
 
 
+logger = get_logger(__name__)
 class MCPError(Exception):
     """MCP工具错误基类"""
 

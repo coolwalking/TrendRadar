@@ -12,12 +12,14 @@ from typing import Dict, List, Optional, Tuple
 from .cache_service import get_cache
 from .parser_service import ParserService
 from ..utils.errors import DataNotFoundError
+from trendradar.logging_config import get_logger
 
 
+logger = get_logger(__name__)
 class DataService:
     """数据访问服务类"""
 
-    def __init__(self, project_root: str = None):
+    def __init__(self, project_root: Optional[str] = None):
         """
         初始化数据服务
 
@@ -210,6 +212,14 @@ class DataService:
             # 默认搜索今天
             start_date = end_date = datetime.now()
 
+        # 尝试从缓存获取
+        date_key = f"{start_date.strftime('%Y-%m-%d')}_{end_date.strftime('%Y-%m-%d')}"
+        platform_key = ','.join(sorted(platforms)) if platforms else 'all'
+        cache_key = f"search_news:{keyword}:{date_key}:{platform_key}:{limit}"
+        cached = self.cache.get(cache_key, ttl=600)  # 10分钟缓存
+        if cached:
+            return cached
+
         # 收集所有匹配的新闻
         results = []
         platform_distribution = Counter()
@@ -271,7 +281,7 @@ class DataService:
         if limit is not None and limit > 0:
             results = results[:limit]
 
-        return {
+        result = {
             "results": results,
             "total": len(results),
             "total_found": total_found,
@@ -281,6 +291,11 @@ class DataService:
                 "keyword": keyword
             }
         }
+
+        # 缓存结果
+        self.cache.set(cache_key, result)
+
+        return result
 
     def get_trending_topics(
         self,
@@ -373,17 +388,33 @@ class DataService:
         # 获取TOP N关键词
         top_keywords = word_frequency.most_common(top_n)
 
+        # 计算趋势和权重的辅助指标
+        all_frequencies = list(word_frequency.values())
+        avg_frequency = sum(all_frequencies) / len(all_frequencies) if all_frequencies else 1
+        max_frequency = top_keywords[0][1] if top_keywords else 1
+
         # 构建话题列表
         topics = []
         for keyword, frequency in top_keywords:
             matched_news = keyword_to_news.get(keyword, [])
 
+            # 基于当前数据集频率分布的简单趋势判断
+            if frequency > avg_frequency * 1.3:
+                trend = "rising"
+            elif frequency < avg_frequency * 0.7:
+                trend = "falling"
+            else:
+                trend = "stable"
+
+            # 基于最大频率的归一化权重
+            weight_score = round(frequency / max_frequency, 2) if max_frequency else 0.0
+
             topics.append({
                 "keyword": keyword,
                 "frequency": frequency,
                 "matched_news": len(set(matched_news)),  # 去重后的新闻数量
-                "trend": "stable",  # TODO: 需要历史数据来计算趋势
-                "weight_score": 0.0  # TODO: 需要实现权重计算
+                "trend": trend,
+                "weight_score": weight_score,
             })
 
         # 构建结果
@@ -505,7 +536,7 @@ class DataService:
         Examples:
             >>> service = DataService()
             >>> earliest, latest = service.get_available_date_range()
-            >>> print(f"可用日期范围：{earliest} 至 {latest}")
+            >>> logger.info(f"可用日期范围：{earliest} 至 {latest}")
         """
         output_dir = self.parser.project_root / "output"
 
@@ -527,8 +558,8 @@ class DataService:
                             int(date_match.group(3))
                         )
                         available_dates.append(folder_date)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"跳过非日期文件夹 {date_folder.name}: {e}")
 
         if not available_dates:
             return (None, None)

@@ -1,0 +1,41 @@
+{% if new_titles %}
+<div class="new-section">
+    <div class="new-section-title">本次新增热点 (共 {{ total_new_count }} 条)</div>
+    {% for source_data in new_titles %}
+    <div class="new-source-group">
+        <div class="new-source-title">{{ source_data.source_name }} · {{ source_data.titles | length }}条</div>
+        {% for title_data in source_data.titles %}
+        {% set ns = namespace(rank_class='', rank_text='?') %}
+        {% if title_data.ranks %}
+            {% set min_rank = title_data.ranks | min %}
+            {% set rank_threshold = title_data.rank_threshold | default(10) %}
+            {% if min_rank <= 3 %}
+                {% set ns.rank_class = 'top' %}
+            {% elif min_rank <= rank_threshold %}
+                {% set ns.rank_class = 'high' %}
+            {% endif %}
+            {% if title_data.ranks | length == 1 %}
+                {% set ns.rank_text = title_data.ranks[0] %}
+            {% else %}
+                {% set ns.rank_text = (title_data.ranks | min) ~ '-' ~ (title_data.ranks | max) %}
+            {% endif %}
+        {% endif %}
+        <div class="new-item">
+            <div class="new-item-number">{{ loop.index }}</div>
+            <div class="new-item-rank {{ ns.rank_class }}">{{ ns.rank_text }}</div>
+            <div class="new-item-content">
+                <div class="new-item-title">
+                    {% set link_url = title_data.mobile_url | default(title_data.url | default('')) %}
+                    {% if link_url %}
+                        <a href="{{ link_url }}" target="_blank" class="news-link">{{ title_data.title }}</a>
+                    {% else %}
+                        {{ title_data.title }}
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endfor %}
+</div>
+{% endif %}

@@ -7,7 +7,7 @@
 import re
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from difflib import SequenceMatcher
 
 from ..services.data_service import DataService
@@ -19,6 +19,10 @@ from ..utils.validators import (
     validate_date_range
 )
 from ..utils.errors import MCPError, InvalidParameterError, DataNotFoundError
+from trendradar.logging_config import get_logger
+
+
+logger = get_logger(__name__)
 
 
 def calculate_news_weight(news_data: Dict, rank_threshold: int = 5) -> float:
@@ -77,7 +81,7 @@ def calculate_news_weight(news_data: Dict, rank_threshold: int = 5) -> float:
 class AnalyticsTools:
     """高级数据分析工具类"""
 
-    def __init__(self, project_root: str = None):
+    def __init__(self, project_root: Optional[str] = None):
         """
         初始化分析工具
 
@@ -145,6 +149,7 @@ class AnalyticsTools:
                 "error": e.to_dict()
             }
         except Exception as e:
+            logger.exception(f"Unexpected error: {e}")
             return {
                 "success": False,
                 "error": {
@@ -233,6 +238,7 @@ class AnalyticsTools:
                 "error": e.to_dict()
             }
         except Exception as e:
+            logger.exception(f"Unexpected error: {e}")
             return {
                 "success": False,
                 "error": {
@@ -282,7 +288,7 @@ class AnalyticsTools:
             ...     date_range={"start": "2024-12-01", "end": "2024-12-31"},
             ...     granularity="day"
             ... )
-            >>> print(result['trend_data'])
+            >>> logger.info(result['trend_data'])
         """
         try:
             # 验证参数
@@ -391,6 +397,7 @@ class AnalyticsTools:
                 "error": e.to_dict()
             }
         except Exception as e:
+            logger.exception(f"Unexpected error: {e}")
             return {
                 "success": False,
                 "error": {
@@ -426,7 +433,7 @@ class AnalyticsTools:
             ...     topic="人工智能",
             ...     date_range={"start": "2025-11-08", "end": "2025-11-17"}
             ... )
-            >>> print(result['platform_stats'])
+            >>> logger.info(result['platform_stats'])
         """
         try:
             # 参数验证
@@ -441,7 +448,7 @@ class AnalyticsTools:
                 start_date = end_date = datetime.now()
 
             # 收集各平台数据
-            platform_stats = defaultdict(lambda: {
+            platform_stats: Dict[str, Any] = defaultdict(lambda: {
                 "total_news": 0,
                 "topic_mentions": 0,
                 "unique_titles": set(),
@@ -515,6 +522,7 @@ class AnalyticsTools:
                 "error": e.to_dict()
             }
         except Exception as e:
+            logger.exception(f"Unexpected error: {e}")
             return {
                 "success": False,
                 "error": {
@@ -550,7 +558,7 @@ class AnalyticsTools:
             ...     min_frequency=5,
             ...     top_n=15
             ... )
-            >>> print(result['cooccurrence_pairs'])
+            >>> logger.info(result['cooccurrence_pairs'])
         """
         try:
             # 参数验证
@@ -561,8 +569,8 @@ class AnalyticsTools:
             all_titles, _, _ = self.data_service.parser.read_all_titles_for_date()
 
             # 关键词共现统计
-            cooccurrence = Counter()
-            keyword_titles = defaultdict(list)
+            cooccurrence: Counter[Tuple[str, ...]] = Counter()
+            keyword_titles: Dict[str, List[str]] = defaultdict(list)
 
             for platform_id, titles in all_titles.items():
                 for title in titles.keys():
@@ -620,6 +628,7 @@ class AnalyticsTools:
                 "error": e.to_dict()
             }
         except Exception as e:
+            logger.exception(f"Unexpected error: {e}")
             return {
                 "success": False,
                 "error": {
@@ -674,7 +683,7 @@ class AnalyticsTools:
             ...     date_range={"start": "2025-11-11", "end": "2025-11-17"},
             ...     limit=10
             ... )
-            >>> print(result['ai_prompt'])  # 获取生成的提示词
+            >>> logger.info(result['ai_prompt'])  # 获取生成的提示词
         """
         try:
             # 参数验证
@@ -807,6 +816,7 @@ class AnalyticsTools:
                 "error": e.to_dict()
             }
         except Exception as e:
+            logger.exception(f"Unexpected error: {e}")
             return {
                 "success": False,
                 "error": {
@@ -939,7 +949,7 @@ class AnalyticsTools:
             ...     threshold=0.6,
             ...     limit=10
             ... )
-            >>> print(result['similar_news'])
+            >>> logger.info(result['similar_news'])
         """
         try:
             # 参数验证
@@ -1019,6 +1029,7 @@ class AnalyticsTools:
                 "error": e.to_dict()
             }
         except Exception as e:
+            logger.exception(f"Unexpected error: {e}")
             return {
                 "success": False,
                 "error": {
@@ -1059,7 +1070,7 @@ class AnalyticsTools:
             ...     entity_type="person",
             ...     limit=20
             ... )
-            >>> print(result['related_news'])
+            >>> logger.info(result['related_news'])
         """
         try:
             # 参数验证
@@ -1076,8 +1087,8 @@ class AnalyticsTools:
             all_titles, id_to_name, _ = self.data_service.parser.read_all_titles_for_date()
 
             # 搜索包含实体的新闻
-            related_news = []
-            entity_context = Counter()  # 统计实体周边的词
+            related_news: List[Dict] = []
+            entity_context: Counter[str] = Counter()  # 统计实体周边的词
 
             for platform_id, titles in all_titles.items():
                 platform_name = id_to_name.get(platform_id, platform_id)
@@ -1147,6 +1158,7 @@ class AnalyticsTools:
                 "error": e.to_dict()
             }
         except Exception as e:
+            logger.exception(f"Unexpected error: {e}")
             return {
                 "success": False,
                 "error": {
@@ -1181,7 +1193,7 @@ class AnalyticsTools:
             >>> result = tools.generate_summary_report(
             ...     report_type="daily"
             ... )
-            >>> print(result['markdown_report'])
+            >>> logger.info(result['markdown_report'])
         """
         try:
             # 参数验证
@@ -1203,9 +1215,9 @@ class AnalyticsTools:
                     start_date = end_date - timedelta(days=6)
 
             # 收集数据
-            all_keywords = Counter()
-            all_platforms_news = defaultdict(int)
-            all_titles_list = []
+            all_keywords: Counter[str] = Counter()
+            all_platforms_news: Dict[str, int] = defaultdict(int)
+            all_titles_list: List[Dict] = []
 
             current_date = start_date
             while current_date <= end_date:
@@ -1327,6 +1339,7 @@ class AnalyticsTools:
                 "error": e.to_dict()
             }
         except Exception as e:
+            logger.exception(f"Unexpected error: {e}")
             return {
                 "success": False,
                 "error": {
@@ -1359,7 +1372,7 @@ class AnalyticsTools:
             >>> result = tools.get_platform_activity_stats(
             ...     date_range={"start": "2025-11-08", "end": "2025-11-17"}
             ... )
-            >>> print(result['platform_activity'])
+            >>> logger.info(result['platform_activity'])
         """
         try:
             # 参数验证
@@ -1372,7 +1385,7 @@ class AnalyticsTools:
                 start_date = end_date = datetime.now()
 
             # 统计各平台活跃度
-            platform_activity = defaultdict(lambda: {
+            platform_activity: Dict[str, Any] = defaultdict(lambda: {
                 "total_updates": 0,
                 "days_active": set(),
                 "news_count": 0,
@@ -1454,6 +1467,7 @@ class AnalyticsTools:
                 "error": e.to_dict()
             }
         except Exception as e:
+            logger.exception(f"Unexpected error: {e}")
             return {
                 "success": False,
                 "error": {
@@ -1491,7 +1505,7 @@ class AnalyticsTools:
             ...     topic="人工智能",
             ...     date_range={"start": "2025-10-19", "end": "2025-11-17"}
             ... )
-            >>> print(result['lifecycle_stage'])
+            >>> logger.info(result['lifecycle_stage'])
         """
         try:
             # 参数验证
@@ -1612,6 +1626,7 @@ class AnalyticsTools:
                 "error": e.to_dict()
             }
         except Exception as e:
+            logger.exception(f"Unexpected error: {e}")
             return {
                 "success": False,
                 "error": {
@@ -1647,7 +1662,7 @@ class AnalyticsTools:
             ...     threshold=3.0,
             ...     time_window=24
             ... )
-            >>> print(result['viral_topics'])
+            >>> logger.info(result['viral_topics'])
         """
         try:
             # 参数验证
@@ -1672,8 +1687,8 @@ class AnalyticsTools:
                 previous_all_titles = {}
 
             # 统计当前的关键词频率
-            current_keywords = Counter()
-            current_keyword_titles = defaultdict(list)
+            current_keywords: Counter[str] = Counter()
+            current_keyword_titles: Dict[str, List[str]] = defaultdict(list)
 
             for _, titles in current_all_titles.items():
                 for title in titles.keys():
@@ -1684,7 +1699,7 @@ class AnalyticsTools:
                         current_keyword_titles[kw].append(title)
 
             # 统计之前的关键词频率
-            previous_keywords = Counter()
+            previous_keywords: Counter[str] = Counter()
 
             for _, titles in previous_all_titles.items():
                 for title in titles.keys():
@@ -1748,6 +1763,7 @@ class AnalyticsTools:
                 "error": e.to_dict()
             }
         except Exception as e:
+            logger.exception(f"Unexpected error: {e}")
             return {
                 "success": False,
                 "error": {
@@ -1783,7 +1799,7 @@ class AnalyticsTools:
             ...     lookahead_hours=6,
             ...     confidence_threshold=0.7
             ... )
-            >>> print(result['predicted_topics'])
+            >>> logger.info(result['predicted_topics'])
         """
         try:
             # 参数验证
@@ -1807,7 +1823,7 @@ class AnalyticsTools:
                     )
 
                     # 统计关键词
-                    keywords_count = Counter()
+                    keywords_count: Counter[str] = Counter()
                     for _, titles in all_titles.items():
                         for title in titles.keys():
                             keywords = self._extract_keywords(title)
@@ -1910,6 +1926,7 @@ class AnalyticsTools:
                 "error": e.to_dict()
             }
         except Exception as e:
+            logger.exception(f"Unexpected error: {e}")
             return {
                 "success": False,
                 "error": {

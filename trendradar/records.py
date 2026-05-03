@@ -1,23 +1,25 @@
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Dict
+from typing import Any, Dict
 
 import pytz
 
 from trendradar import utils
+from trendradar.logging_config import get_logger
 
 
+logger = get_logger(__name__)
 class PushRecordManager:
     """推送记录管理器"""
 
-    def __init__(self, config: Dict):
+    def __init__(self, config: Dict[str, Any]):
         self.config = config
         self.record_dir = Path("output") / ".push_records"
         self.ensure_record_dir()
         self.cleanup_old_records()
 
-    def ensure_record_dir(self):
+    def ensure_record_dir(self) -> None:
         """确保记录目录存在"""
         self.record_dir.mkdir(parents=True, exist_ok=True)
 
@@ -26,7 +28,7 @@ class PushRecordManager:
         today = utils.get_beijing_time().strftime("%Y%m%d")
         return self.record_dir / f"push_record_{today}.json"
 
-    def cleanup_old_records(self):
+    def cleanup_old_records(self) -> None:
         """清理过期的推送记录"""
         retention_days = self.config["PUSH_WINDOW"]["RECORD_RETENTION_DAYS"]
         current_time = utils.get_beijing_time()
@@ -39,9 +41,9 @@ class PushRecordManager:
 
                 if (current_time - file_date).days > retention_days:
                     record_file.unlink()
-                    print(f"清理过期推送记录: {record_file.name}")
+                    logger.info(f"清理过期推送记录: {record_file.name}")
             except Exception as e:
-                print(f"清理记录文件失败 {record_file}: {e}")
+                logger.exception(f"清理记录文件失败 {record_file}: {e}")
 
     def has_pushed_today(self) -> bool:
         """检查今天是否已经推送过"""
@@ -53,12 +55,12 @@ class PushRecordManager:
         try:
             with open(record_file, "r", encoding="utf-8") as f:
                 record = json.load(f)
-            return record.get("pushed", False)
+            return bool(record.get("pushed", False))
         except Exception as e:
-            print(f"读取推送记录失败: {e}")
+            logger.exception(f"读取推送记录失败: {e}")
             return False
 
-    def record_push(self, report_type: str):
+    def record_push(self, report_type: str) -> None:
         """记录推送"""
         record_file = self.get_today_record_file()
         now = utils.get_beijing_time()
@@ -72,9 +74,9 @@ class PushRecordManager:
         try:
             with open(record_file, "w", encoding="utf-8") as f:
                 json.dump(record, f, ensure_ascii=False, indent=2)
-            print(f"推送记录已保存: {report_type} at {now.strftime('%H:%M:%S')}")
+            logger.info(f"推送记录已保存: {report_type} at {now.strftime('%H:%M:%S')}")
         except Exception as e:
-            print(f"保存推送记录失败: {e}")
+            logger.exception(f"保存推送记录失败: {e}")
 
     def is_in_time_range(self, start_time: str, end_time: str) -> bool:
         """检查当前时间是否在指定时间范围内"""
@@ -96,7 +98,7 @@ class PushRecordManager:
 
                 return f"{hour:02d}:{minute:02d}"
             except Exception as e:
-                print(f"时间格式化错误 '{time_str}': {e}")
+                logger.exception(f"时间格式化错误 '{time_str}': {e}")
                 return time_str
 
         normalized_start = normalize_time(start_time)
@@ -106,6 +108,6 @@ class PushRecordManager:
         result = normalized_start <= normalized_current <= normalized_end
 
         if not result:
-            print(f"时间窗口判断：当前 {normalized_current}，窗口 {normalized_start}-{normalized_end}")
+            logger.info(f"时间窗口判断：当前 {normalized_current}，窗口 {normalized_start}-{normalized_end}")
 
         return result

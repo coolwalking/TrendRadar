@@ -1,13 +1,15 @@
 import json
 import random
 import time
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import requests
 
 from trendradar import utils
+from trendradar.logging_config import get_logger
 
 
+logger = get_logger(__name__)
 class DataFetcher:
     """数据获取器"""
 
@@ -63,7 +65,7 @@ class DataFetcher:
                     raise ValueError(f"响应状态异常: {status}")
 
                 status_info = "最新数据" if status == "success" else "缓存数据"
-                print(f"获取 {id_value} 成功（{status_info}）")
+                logger.info(f"获取 {id_value} 成功（{status_info}）")
                 return data_text, id_value, alias
 
             except Exception as e:
@@ -72,10 +74,10 @@ class DataFetcher:
                     base_wait = random.uniform(min_retry_wait, max_retry_wait)
                     additional_wait = (retries - 1) * random.uniform(1, 2)
                     wait_time = base_wait + additional_wait
-                    print(f"请求 {id_value} 失败: {e}. {wait_time:.2f}秒后重试...")
+                    logger.exception(f"请求 {id_value} 失败: {e}. {wait_time:.2f}秒后重试...")
                     time.sleep(wait_time)
                 else:
-                    print(f"请求 {id_value} 失败: {e}")
+                    logger.exception(f"请求 {id_value} 失败: {e}")
                     return None, id_value, alias
         return None, id_value, alias
 
@@ -85,9 +87,9 @@ class DataFetcher:
         request_interval: Optional[int] = None,
     ) -> Tuple[Dict, Dict, List]:
         """爬取多个网站数据"""
-        results = {}
-        id_to_name = {}
-        failed_ids = []
+        results: Dict[str, Any] = {}
+        id_to_name: Dict[str, str] = {}
+        failed_ids: List[str] = []
 
         interval = request_interval if request_interval is not None else self.request_interval
 
@@ -123,10 +125,10 @@ class DataFetcher:
                                 "mobileUrl": mobile_url,
                             }
                 except json.JSONDecodeError:
-                    print(f"解析 {id_value} 响应失败")
+                    logger.error(f"解析 {id_value} 响应失败")
                     failed_ids.append(id_value)
                 except Exception as e:
-                    print(f"处理 {id_value} 数据出错: {e}")
+                    logger.exception(f"处理 {id_value} 数据出错: {e}")
                     failed_ids.append(id_value)
             else:
                 failed_ids.append(id_value)
@@ -136,5 +138,5 @@ class DataFetcher:
                 actual_interval = max(50, actual_interval)
                 time.sleep(actual_interval / 1000)
 
-        print(f"成功: {list(results.keys())}, 失败: {failed_ids}")
+        logger.error(f"成功: {list(results.keys())}, 失败: {failed_ids}")
         return results, id_to_name, failed_ids

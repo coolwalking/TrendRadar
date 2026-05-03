@@ -3394,6 +3394,52 @@ flowchart TD
 
 <br>
 
+## 🧪 开发与测试
+
+### 运行测试
+
+本项目使用 `pytest` 进行测试，要求代码覆盖率不低于 80%。
+
+```bash
+# 安装开发依赖
+pip install -e ".[dev]"
+
+# 运行全部测试
+pytest
+
+# 运行测试并生成覆盖率报告
+pytest --cov=trendradar --cov-report=html
+```
+
+### 静态类型检查
+
+```bash
+mypy trendradar/ main.py
+```
+
+### 项目结构
+
+```
+trendradar/
+├── config.py          # 配置加载与管理
+├── fetcher.py         # 数据爬取
+├── records.py         # 推送记录管理
+├── utils.py           # 通用工具函数
+├── logging_config.py  # structlog 日志配置
+└── notifier/          # 通知渠道实现
+    ├── base.py        # 通知器抽象基类
+    ├── batch.py       # 消息分批逻辑
+    ├── bark.py        # Bark 推送
+    ├── dingtalk.py    # 钉钉推送
+    ├── email.py       # 邮件推送
+    ├── feishu.py      # 飞书推送
+    ├── ntfy.py        # ntfy 推送
+    ├── slack.py       # Slack 推送
+    ├── telegram.py    # Telegram 推送
+    └── wework.py      # 企业微信推送
+mcp_server/            # MCP 服务器实现
+```
+
 ## 📄 许可证
 
 GPL-3.0 License
