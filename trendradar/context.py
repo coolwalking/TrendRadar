@@ -349,8 +349,13 @@ class AppContext:
         rss_new_items: Optional[List[Dict]] = None,
         ai_analysis: Optional[Any] = None,
         standalone_data: Optional[Dict] = None,
+        display_regions: Optional[Dict] = None,
     ) -> str:
         """渲染HTML内容"""
+        # 获取区域显示配置
+        if display_regions is None:
+            display_regions = self.config.get("DISPLAY", {}).get("REGIONS", {})
+        
         return render_html_content(
             report_data=report_data,
             total_titles=total_titles,
@@ -364,6 +369,7 @@ class AppContext:
             ai_analysis=ai_analysis,
             show_new_section=self.show_new_section,
             standalone_data=standalone_data,
+            display_regions=display_regions,
         )
 
     # === 通知内容渲染 ===

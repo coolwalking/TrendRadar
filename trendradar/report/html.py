@@ -27,6 +27,7 @@ def render_html_content(
     standalone_data: Optional[Dict] = None,
     ai_analysis: Optional[Any] = None,
     show_new_section: bool = True,
+    display_regions: Optional[Dict] = None,
 ) -> str:
     """渲染HTML内容
 
@@ -43,6 +44,9 @@ def render_html_content(
         standalone_data: 独立展示区数据（可选），包含 platforms 和 rss_feeds
         ai_analysis: AI 分析结果对象（可选），AIAnalysisResult 实例
         show_new_section: 是否显示新增热点区域
+        display_regions: 区域显示配置（可选），控制各区域是否显示
+            - STANDALONE: 是否显示独立展示区（默认 False）
+            - AI_ANALYSIS: 是否显示 AI 分析区域（默认 True）
 
     Returns:
         渲染后的 HTML 字符串
@@ -1878,11 +1882,11 @@ def render_html_content(
     rss_stats_html = render_rss_stats_html(rss_items, "RSS 订阅更新") if rss_items else ""
     rss_new_html = render_rss_stats_html(rss_new_items, "RSS 新增更新") if rss_new_items else ""
 
-    # 生成独立展示区 HTML
-    standalone_html = render_standalone_html(standalone_data)
+    # 生成独立展示区 HTML（根据 display_regions 配置决定是否渲染）
+    standalone_html = render_standalone_html(standalone_data) if display_regions.get("STANDALONE", False) else ""
 
-    # 生成 AI 分析 HTML
-    ai_html = render_ai_analysis_html_rich(ai_analysis) if ai_analysis else ""
+    # 生成 AI 分析 HTML（根据 display_regions 配置决定是否渲染）
+    ai_html = render_ai_analysis_html_rich(ai_analysis) if ai_analysis and display_regions.get("AI_ANALYSIS", True) else ""
 
     # 准备各区域内容映射
     region_contents = {
