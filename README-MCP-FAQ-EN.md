@@ -6,7 +6,7 @@
 
 # TrendRadar MCP Tool Usage Q&A
 
-> AI Query Guide - How to Use News Trend Analysis Tools Through Natural Conversation (v3.1.5)
+> AI Query Guide - How to Use News Trend Analysis Tools Through Natural Conversation (v3.1.7)
 
 ---
 
@@ -36,6 +36,10 @@
 | **Storage** | `sync_from_remote` | Pull data from remote storage to local |
 | | `get_storage_status` | Get storage config and status |
 | | `list_available_dates` | List available dates (local/remote) |
+| **Article** | `read_article` | Read single article content (Markdown format) |
+| | `read_articles_batch` | Batch read multiple articles (max 5) |
+| **Notification** | `get_notification_channels` | Get all configured notification channels and their status |
+| | `send_notification` | Send messages to configured notification channels (auto format conversion) |
 
 ---
 
@@ -528,7 +532,7 @@ After testing one query, please immediately check the [SiliconFlow Billing](http
 - Available platform list
 - Crawler configuration (request interval, timeout settings)
 - Weight configuration (ranking weight, frequency weight)
-- Notification configuration (DingTalk, WeChat)
+- Notification configuration (Feishu, DingTalk, WeCom, Telegram, Email, ntfy, Bark, Slack, Generic Webhook)
 
 ---
 
@@ -719,6 +723,144 @@ Users often use natural language like "this week", "last 7 days" to express date
 - ✅ **Accuracy**: Based on server-side precise time calculation
 - ✅ **Standardization**: Returns standard date format
 - ✅ **Flexibility**: Supports Chinese/English, dynamic days
+
+---
+
+## Article Content Reading
+
+### Q19: How to read the full content of a news article?
+
+**You can ask like this:**
+
+- "Help me read the content of this news: https://example.com/news/123"
+- "Get the article body from this link"
+- "Read the detailed content of this report"
+
+**Tool functionality:**
+
+- Converts web pages to clean Markdown format via Jina AI Reader
+- Automatically removes ads, navigation bars, sidebars, and other noise
+- Returns LLM-friendly structured content
+
+**Typical workflow:**
+
+1. First use `search_news(include_url=True)` to search news and get links
+2. Then use `read_article(url=link)` to read the article body
+3. AI analyzes, summarizes, translates the Markdown content
+
+**Return information:**
+
+| Field | Description |
+|-------|-------------|
+| **content** | Article body in Markdown format |
+| **url** | Original link |
+| **content_length** | Content length (characters) |
+
+**Can be adjusted:**
+
+- Timeout: like "set timeout to 60 seconds" (default 30 seconds, max 60 seconds)
+
+**Notes:**
+
+- 5-second interval between requests (built-in rate control)
+- Uses Jina AI Reader free service (100 RPM limit)
+- Some paywalled/login-required pages may not be fully accessible
+
+---
+
+### Q20: How to batch read multiple articles?
+
+**You can ask like this:**
+
+- "Help me read the content of these news articles"
+- "Batch get the article bodies from these links"
+- "Read the detailed content of the first 3 search results"
+
+**Typical workflow:**
+
+1. First use `search_news(include_url=True)` to search news and get multiple links
+2. Then use `read_articles_batch(urls=[...])` to batch read article bodies
+3. AI performs comparative analysis, comprehensive reports on multiple articles
+
+**Tool limits:**
+
+| Limit | Value |
+|-------|-------|
+| Max articles per batch | **5** |
+| Request interval | **5 seconds** |
+| Estimated time (5 articles) | **25-30 seconds** |
+
+**Return information:**
+
+| Field | Description |
+|-------|-------------|
+| **summary** | Statistics of batch reading |
+| **articles** | Content and status of each article |
+| **note** | If any articles were skipped, explains why |
+
+**Notes:**
+
+- Articles beyond 5 will be automatically skipped
+- Single article failure doesn't affect other articles
+- More articles mean longer wait time, please be patient
+
+---
+
+## Notification Push
+
+### Q21: How to send notification messages via MCP?
+
+**You can ask like this:**
+
+- "Show me which notification channels are configured"
+- "Send a test message to all channels"
+- "Push this content to Feishu"
+- "Send today's news summary to DingTalk and Telegram"
+
+**Supported notification channels (9):**
+
+| Channel | Message Format | Configuration |
+|---------|---------------|---------------|
+| **Feishu** | Plain text | `FEISHU_WEBHOOK_URL` |
+| **DingTalk** | Markdown | `DINGTALK_WEBHOOK_URL` |
+| **WeCom** | Markdown | `WEWORK_WEBHOOK_URL` |
+| **Telegram** | HTML | `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` |
+| **Email** | HTML | `EMAIL_FROM` + `EMAIL_PASSWORD` + `EMAIL_TO` |
+| **ntfy** | Markdown | `NTFY_SERVER_URL` + `NTFY_TOPIC` |
+| **Bark** | Markdown | `BARK_URL` |
+| **Slack** | mrkdwn | `SLACK_WEBHOOK_URL` |
+| **Generic Webhook** | Markdown | `GENERIC_WEBHOOK_URL` |
+
+**Configuration methods:**
+
+- Configure channels in `config.yaml` under `notification.channels`
+- Or set corresponding environment variables in `.env` file (higher priority)
+- Both sources are automatically merged, `.env` values override `config.yaml` values
+
+**Two tools:**
+
+| Tool | Function | Example Question |
+|------|----------|------------------|
+| `get_notification_channels` | Detect configured channels and status | "View notification channel config" |
+| `send_notification` | Send message to specified or all channels | "Send message to Feishu" |
+
+**Typical workflow:**
+
+1. Check channel status first: "Show me which notification channels are configured"
+2. Send after confirming availability: "Push the following to DingTalk: today's hotspot summary..."
+3. Or specify multiple channels: "Send to Feishu and Telegram"
+4. Without specifying channels, sends to all configured channels
+
+**Message format:**
+
+- The tool accepts messages in **Markdown format**
+- Automatically converts to each channel's required format (Feishu to plain text, Telegram to HTML, Slack to mrkdwn, etc.)
+- No need to manually handle format differences
+
+**Multi-account support:**
+
+- Separate multiple URLs/Tokens with `;` in config values to send to multiple accounts
+- For example: `FEISHU_WEBHOOK_URL=url1;url2` sends to two Feishu groups simultaneously
 
 ---
 
