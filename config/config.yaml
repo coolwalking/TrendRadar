@@ -40,8 +40,8 @@ app:
 # 详细时间线图请查看 config/timeline.yaml
 # ===============================================================
 schedule:
-  enabled: false                        # 是否启用调度系统（true=启用, false=关闭，默认关闭）
-  preset: "morning_evening"             # 预设模板名称（见上方说明）
+  enabled: false                        # 关掉项目内置调度，改用 macOS LaunchAgent 每天 1 次
+  preset: "morning_evening"             # 预设模板名称（已禁用，仅作记录）
 
 
 # ===============================================================
@@ -108,16 +108,395 @@ rss:
     - id: "hacker-news"
       name: "Hacker News"
       url: "https://hnrss.org/frontpage"
+      max_items: 30                   # 限条数,防 AI 筛选成本失控(2026-05-06 加)
 
     - id: "ruanyifeng"
       name: "阮一峰的网络日志"
       url: "http://www.ruanyifeng.com/blog/atom.xml"
       enabled: false                  # 禁用
       # max_age_days: 3               # 示例：推送 3 天内的文章（更新较慢的博客）
-     
+
     - id: "yahoo-finance"
       name: "雅虎财经"
       url: "https://finance.yahoo.com/news/rssindex"
+      max_items: 30                   # 限条数,防 AI 筛选成本失控(2026-05-06 加)
+
+    # ───────────── AI 领域 ─────────────
+    - id: "reddit-localllama"
+      name: "Reddit r/LocalLLaMA"
+      url: "https://www.reddit.com/r/LocalLLaMA/.rss"
+      max_items: 30                   # 限条数,防 AI 筛选成本失控(2026-05-06 加)
+      max_age_days: 2
+
+    - id: "reddit-singularity"
+      name: "Reddit r/singularity"
+      url: "https://www.reddit.com/r/singularity/.rss"
+      max_items: 30                   # 限条数,防 AI 筛选成本失控(2026-05-06 加)
+      max_age_days: 2
+
+    - id: "reddit-openai"
+      name: "Reddit r/OpenAI"
+      url: "https://www.reddit.com/r/OpenAI/.rss"
+      max_items: 30                   # 限条数,防 AI 筛选成本失控(2026-05-06 加)
+      max_age_days: 2
+
+    # 2026-05-18 加: 学界 ML 研究讨论主战场
+    - id: "reddit-machinelearning"
+      name: "Reddit r/MachineLearning"
+      url: "https://www.reddit.com/r/MachineLearning/.rss"
+      max_items: 30
+      max_age_days: 2
+
+    # 2026-05-18 加: Anthropic 没官方 RSS,这里是 Claude 一手讨论
+    - id: "reddit-anthropic"
+      name: "Reddit r/Anthropic"
+      url: "https://www.reddit.com/r/Anthropic/.rss"
+      max_items: 30
+      max_age_days: 2
+
+    # 2026-05-12: anthropic 实测无官方 RSS,依赖 Import AI / Latent Space 间接覆盖
+    - id: "anthropic-blog"
+      name: "Anthropic 博客"
+      url: "https://www.anthropic.com/news/rss.xml"
+      enabled: false
+      max_age_days: 14
+
+    - id: "openai-blog"
+      name: "OpenAI 博客"
+      url: "https://openai.com/news/rss.xml"
+      max_age_days: 14
+      max_items: 30                   # feed 返回全量 900+ 条，截断防止 AI 筛选成本失控
+      whitelisted: true               # 2026-05-12 加: AI 前沿一手源,绕过关键词筛选直接进 AI 卡
+
+    - id: "deepmind-blog"
+      name: "Google DeepMind 博客"
+      url: "https://www.deepmind.com/blog/rss.xml"
+      max_items: 30
+      max_age_days: 14
+      whitelisted: true               # 2026-05-12 加
+
+    # 2026-05-13 加: AI 大佬一手发言(whitelisted,绕过筛选进 AI 卡前沿声音区)
+    - id: "samaltman-blog"
+      name: "Sam Altman 个人 blog"
+      url: "https://blog.samaltman.com/posts.atom"
+      max_items: 15
+      max_age_days: 30                # 他不常更,放宽时窗
+      whitelisted: true
+
+    - id: "nvidia-blog"
+      name: "Nvidia 官方博客 (Jensen Huang 主场)"
+      url: "https://blogs.nvidia.com/feed/"
+      max_items: 30
+      max_age_days: 7
+      whitelisted: true
+
+    # ───────────── AI 长篇访谈(YouTube channel RSS,whitelisted) ─────────────
+    # 2026-05-12 加: 高管/前沿研究员上访谈节目的主要载体
+    - id: "lex-fridman"
+      name: "Lex Fridman Podcast (YT)"
+      url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCSHZKyawb77ixDdsGog4iWA"
+      max_items: 15
+      # 2026-05-18 改: 7 → 21。Lex 一周或两周一集,7 天窗口经常空 → transcript scraper 没数据。
+      max_age_days: 21
+      whitelisted: true
+
+    - id: "dwarkesh"
+      name: "Dwarkesh Patel (Substack)"
+      # 2026-05-18 改: YouTube feed 只给标题 + 短描述,Substack feed 给 3200+ 字
+      # 全文(transcript / 长 essay),才能让 LLM 写出有内容的 insight。
+      url: "https://www.dwarkesh.com/feed"
+      max_items: 15
+      max_age_days: 7
+      whitelisted: true
+
+    - id: "no-priors"
+      name: "No Priors Podcast (YT)"
+      url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCjNRJBlxvvS0UXAT2Ack-QQ"
+      max_items: 15
+      max_age_days: 7
+      whitelisted: true
+
+    - id: "ai-explained"
+      name: "AI Explained (YT — Philip)"
+      url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCNJ1Ymd5yFuUPtn21xtRbbw"
+      max_items: 15
+      max_age_days: 7
+      whitelisted: true
+
+    # 2026-05-13 加: AI CEO 主要访谈场子(已验证 channel_id 有效)
+    - id: "all-in-pod"
+      name: "All-In Podcast (Chamath/Sacks 等四人组,Musk/Altman 常客)"
+      url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCESLZhusAkFfsNsApnjF_Cg"
+      max_items: 15
+      max_age_days: 7
+      whitelisted: true
+
+    - id: "acquired"
+      name: "Acquired (深度公司访谈,Jensen 那期封神)"
+      url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCyFqFYfTW2VoIQKylJ04Rtw"
+      max_items: 15
+      max_age_days: 30                # Acquired 更新慢,放宽时窗
+      whitelisted: true
+
+    - id: "bg2-pod"
+      name: "BG2 Pod (Bill Gurley + Brad Gerstner)"
+      url: "https://www.youtube.com/feeds/videos.xml?channel_id=UC-yRDvpR99LUc5l7i7jLzew"
+      max_items: 15
+      max_age_days: 14
+      whitelisted: true
+
+    - id: "hard-fork"
+      name: "Hard Fork (NYT — Kevin Roose + Casey Newton)"
+      url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCZcR2SVWaGWNlMqPxvQS3vw"
+      max_items: 15
+      max_age_days: 7
+      whitelisted: true
+
+    - id: "in-good-company"
+      name: "In Good Company (Norges Bank IM — Nicolai Tangen)"
+      url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCRhQsN8AVIfZuBNeRV1A37w"
+      max_items: 15
+      max_age_days: 14
+      whitelisted: true
+
+    - id: "theo-von"
+      name: "This Past Weekend w/ Theo Von"
+      url: "https://www.youtube.com/feeds/videos.xml?channel_id=UC5AQEUAwCh1sGDvkQtkDWUQ"
+      max_items: 15
+      max_age_days: 7
+      whitelisted: true
+
+    # 2026-05-13 加: AI 大佬媒体报道兜底(走 AI 筛选,不 whitelist)
+    # 用途: 抓媒体引述他们 X 推文/发言/出席活动等,Musk 没干净 RSS,主要靠这条
+    # max_age_days 拉到 7 + URL 内 when:3d:漏跑一天兜底(Codex 2026-05-13 指出)
+    - id: "news-musk-ai"
+      name: "Google News: Elon Musk (AI/xAI/Grok)"
+      url: "https://news.google.com/rss/search?q=%22Elon+Musk%22+%28AI+OR+xAI+OR+Grok+OR+Tesla%29+when%3A3d&hl=en-US&gl=US&ceid=US:en"
+      max_items: 20
+      max_age_days: 7
+
+    - id: "news-altman"
+      name: "Google News: Sam Altman"
+      url: "https://news.google.com/rss/search?q=%22Sam+Altman%22+when%3A3d&hl=en-US&gl=US&ceid=US:en"
+      max_items: 20
+      max_age_days: 7
+
+    - id: "news-dario"
+      name: "Google News: Dario Amodei / Anthropic"
+      url: "https://news.google.com/rss/search?q=%22Dario+Amodei%22+OR+site%3Aanthropic.com+when%3A7d&hl=en-US&gl=US&ceid=US:en"
+      max_items: 20
+      max_age_days: 7
+
+    - id: "news-huang"
+      name: "Google News: Jensen Huang"
+      url: "https://news.google.com/rss/search?q=%22Jensen+Huang%22+when%3A3d&hl=en-US&gl=US&ceid=US:en"
+      max_items: 20
+      max_age_days: 7
+
+    # ───────────── 国内 AI 一手访谈(B 站,由 sync_bilibili.py 同步)─────────────
+    # 2026-05-12 加: 水球泡视频里推荐的国内一手源
+    - id: "web3-sky-city"
+      name: "web3 天空之城 (B 站搬运外网)"
+      url: "file:///Users/bossoffice/Projects/TrendRadar/output/synced/bilibili/web3-sky-city.xml"
+      max_items: 15
+      max_age_days: 7
+      whitelisted: true
+
+    - id: "zhangxiaojun-bili"
+      name: "张小珺 (B 站 AI 访谈)"
+      url: "file:///Users/bossoffice/Projects/TrendRadar/output/synced/bilibili/zhangxiaojun-bili.xml"
+      max_items: 15
+      max_age_days: 7
+      whitelisted: true
+
+    - id: "laoluo-shizilukou"
+      name: "老罗的十字路口 (B 站长篇访谈)"
+      url: "file:///Users/bossoffice/Projects/TrendRadar/output/synced/bilibili/laoluo-shizilukou.xml"
+      max_items: 15
+      max_age_days: 7
+      whitelisted: true
+
+    - id: "simon-willison"
+      name: "Simon Willison"
+      url: "https://simonwillison.net/atom/everything/"
+      max_items: 30                   # 限条数,防 AI 筛选成本失控(2026-05-06 加)
+      max_age_days: 7
+
+    - id: "import-ai"
+      name: "Import AI (Jack Clark)"
+      url: "https://importai.substack.com/feed"
+      max_items: 30                   # 限条数,防 AI 筛选成本失控(2026-05-06 加)
+      max_age_days: 14
+
+    - id: "latent-space"
+      name: "Latent Space"
+      url: "https://www.latent.space/feed"
+      max_items: 30                   # 限条数,防 AI 筛选成本失控(2026-05-06 加)
+      max_age_days: 14
+      whitelisted: true               # 2026-05-18 加: Substack 全文有 transcript/深度文章,值得进 frontier_voices
+
+    - id: "one-useful-thing"
+      name: "One Useful Thing"
+      url: "https://www.oneusefulthing.org/feed"
+      max_items: 30                   # 限条数,防 AI 筛选成本失控(2026-05-06 加)
+      max_age_days: 14
+
+    - id: "hn-best"
+      name: "Hacker News - Best"
+      url: "https://hnrss.org/best"
+      max_items: 30                   # 限条数,防 AI 筛选成本失控(2026-05-06 加)
+      max_age_days: 2
+
+    - id: "hn-show"
+      name: "Hacker News - Show HN"
+      url: "https://hnrss.org/show"
+      max_items: 30                   # 限条数,防 AI 筛选成本失控(2026-05-06 加)
+      max_age_days: 3
+
+    - id: "hn-ask"
+      name: "Hacker News - Ask HN"
+      url: "https://hnrss.org/ask"
+      max_items: 30                   # 限条数,防 AI 筛选成本失控(2026-05-06 加)
+      max_age_days: 3
+
+    # ───────────── 项目"上升中"补充源 (2026-05-12 加) ─────────────
+    # GitHub Trending 偏好"已经红的项目今日加 stars",这一栏补"刚发布上升快"的盲区
+    - id: "product-hunt-ai"
+      name: "Product Hunt - AI 类目"
+      url: "https://www.producthunt.com/feed?category=artificial-intelligence"
+      max_items: 30
+      max_age_days: 3
+
+    - id: "awesome-llm-apps"
+      name: "Awesome LLM Apps (新收录)"
+      url: "https://github.com/Shubhamsaboo/awesome-llm-apps/commits/main.atom"
+      max_items: 20
+      max_age_days: 7
+
+    - id: "awesome-ai-agents"
+      name: "Awesome AI Agents (新收录)"
+      url: "https://github.com/e2b-dev/awesome-ai-agents/commits/main.atom"
+      max_items: 20
+      max_age_days: 7
+
+    - id: "awesome-mcp-servers"
+      name: "Awesome MCP Servers (新收录)"
+      url: "https://github.com/punkpeye/awesome-mcp-servers/commits/main.atom"
+      max_items: 20
+      max_age_days: 7
+
+    # ───────────── GitHub Trending(已红项目今日 star 增量) ─────────────
+    - id: "github-trending-python"
+      name: "GitHub Trending Python (日榜)"
+      url: "https://mshibanami.github.io/GitHubTrendingRSS/daily/python.xml"
+      max_items: 30                   # 限条数,防 AI 筛选成本失控(2026-05-06 加)
+      max_age_days: 2
+
+    - id: "github-trending-all"
+      name: "GitHub Trending 全语言 (日榜)"
+      url: "https://mshibanami.github.io/GitHubTrendingRSS/daily/all.xml"
+      max_items: 30                   # 限条数,防 AI 筛选成本失控(2026-05-06 加)
+      max_age_days: 2
+
+    - id: "github-trending-typescript"
+      name: "GitHub Trending TypeScript (日榜)"
+      url: "https://mshibanami.github.io/GitHubTrendingRSS/daily/typescript.xml"
+      max_items: 30                   # 限条数,防 AI 筛选成本失控(2026-05-06 加)
+      max_age_days: 2
+
+    - id: "github-trending-rust"
+      name: "GitHub Trending Rust (日榜)"
+      url: "https://mshibanami.github.io/GitHubTrendingRSS/daily/rust.xml"
+      max_items: 30                   # 限条数,防 AI 筛选成本失控(2026-05-06 加)
+      max_age_days: 2
+
+    - id: "github-trending-weekly-all"
+      name: "GitHub Trending 全语言 (周榜)"
+      url: "https://mshibanami.github.io/GitHubTrendingRSS/weekly/all.xml"
+      max_items: 30                   # 限条数,防 AI 筛选成本失控(2026-05-06 加)
+      max_age_days: 7
+
+    # ───────────── 中文科技媒体 ─────────────
+    - id: "36kr"
+      name: "36氪"
+      url: "https://36kr.com/feed"
+      max_items: 30                   # 限条数,防 AI 筛选成本失控(2026-05-06 加)
+      max_age_days: 2
+
+    - id: "ithome"
+      name: "IT之家"
+      url: "https://www.ithome.com/rss/"
+      max_items: 30                   # 限条数,防 AI 筛选成本失控(2026-05-06 加)
+      max_age_days: 2
+
+    # ───────────── 生物医疗工程 ─────────────
+    - id: "stat-news"
+      name: "STAT News"
+      url: "https://www.statnews.com/feed/"
+      max_items: 30                   # 限条数,防 AI 筛选成本失控(2026-05-06 加)
+      max_age_days: 3
+
+    - id: "fierce-biotech"
+      name: "FierceBiotech"
+      url: "https://www.fiercebiotech.com/rss/xml"
+      max_items: 30                   # 限条数,防 AI 筛选成本失控(2026-05-06 加)
+      max_age_days: 3
+
+    - id: "mit-tr-biotech"
+      name: "MIT Tech Review 生物科技"
+      url: "https://www.technologyreview.com/topic/biotechnology/feed"
+      max_items: 30                   # 限条数,防 AI 筛选成本失控(2026-05-06 加)
+      max_age_days: 7
+
+    - id: "gen-news"
+      name: "GEN (Genetic Engineering News)"
+      url: "https://www.genengnews.com/feed/"
+      max_items: 30                   # 限条数,防 AI 筛选成本失控(2026-05-06 加)
+      max_age_days: 3
+
+    - id: "reddit-biotech"
+      name: "Reddit r/biotech"
+      url: "https://www.reddit.com/r/biotech/.rss"
+      max_items: 30                   # 限条数,防 AI 筛选成本失控(2026-05-06 加)
+      max_age_days: 3
+
+    # ───────────── 国际局势 ─────────────
+    # 2026-05-13 加: 把"国际局势"独立成第 5 张图卡(P0)
+    - id: "bbc-world"
+      name: "BBC World"
+      url: "https://feeds.bbci.co.uk/news/world/rss.xml"
+      max_items: 30
+      max_age_days: 2
+
+    - id: "nytimes-world"
+      name: "The New York Times World"
+      url: "https://rss.nytimes.com/services/xml/rss/nyt/World.xml"
+      max_items: 30
+      max_age_days: 2
+
+    - id: "guardian-world"
+      name: "The Guardian World"
+      url: "https://www.theguardian.com/world/rss"
+      max_items: 30
+      max_age_days: 2
+
+    - id: "aljazeera"
+      name: "Al Jazeera"
+      url: "https://www.aljazeera.com/xml/rss/all.xml"
+      max_items: 30
+      max_age_days: 2
+
+    - id: "npr-news"
+      name: "NPR News"
+      url: "https://feeds.npr.org/1001/rss.xml"
+      max_items: 30
+      max_age_days: 2
+
+    - id: "reddit-worldnews"
+      name: "Reddit r/worldnews"
+      url: "https://www.reddit.com/r/worldnews/.rss"
+      max_items: 30
+      max_age_days: 2
 
     # 自定义源示例
     # - id: "custom-feed"
@@ -168,11 +547,14 @@ filter:
 # 4.6 AI 智能筛选配置（仅 filter.method=ai 时生效）
 # ===============================================================
 ai_filter:
-  batch_size: 200                         # 每批发送给 AI 的标题数，超过此数量自动分批
-  batch_interval: 2                       # 分批间隔（秒），避免触发 API 限流，0=不等待
+  batch_size: 30                          # 每批发送给 AI 的标题数（控制单次 API 调用量）
+                                          # 实测：200 条/批时 DeepSeek 注意力分散，大量漏判；30 条/批召回率正常
+                                          # 新闻超过此数量时自动分批处理
+  batch_interval: 2                       # 分批处理时，每批之间的等待时间（秒）
+                                          # 避免频繁调用 API 触发限流，设为 0 则不等待
 
-  min_score: 0.7                          # 推送最低分数阈值（0.0~1.0），值越高越严格
-                                          # 推荐 0.5~0.7 起步，0=不过滤
+  min_score: 0.55                         # 推送最低分数阈值（0.0 ~ 1.0）— 调低以容纳英文标题(中文 prompt 对英文打分会偏保守)
+                                          # 0 = 不过滤；值越高越严格（推荐先用 0.5~0.7）
 
   # 兴趣描述文件（默认 config/ai_interests.txt，无需配置）
   # 自定义文件放入 config/custom/ai/ 目录，然后指定文件名：
@@ -238,8 +620,10 @@ display:
 #    配对项（如 Telegram token 和 chat_id）数量必须一致
 # ===============================================================
 notification:
-  enabled: true                       # 是否启用通知功能（true=启用, false=关闭）—— 总开关
-                                      # 开启 schedule 后此项仍为总开关：false=永远不推送，true=由调度控制
+  enabled: false                      # 关闭内置文字通知；图片由 scripts/notify_ntfy.sh 单独推送
+                                      # ⚠️ 开启调度系统后，此项仍为总开关：
+                                      #   false → 永远不推送（无论调度怎么设置）
+                                      #   true  → 由调度的 push 字段控制何时推送
 
   # 推送渠道配置
   channels:
@@ -339,13 +723,15 @@ ai:
   #   - anthropic/claude-sonnet-4-20250514 (Anthropic)
   #   - ollama/llama3 (本地 Ollama)
   # 完整列表: https://docs.litellm.ai/docs/providers
-  # 如果你对于看英文文档比较头疼，那么可以点击页面右下角的 【Ask AI】 ,用中文询问怎么配置
-
-  model: "deepseek/deepseek-v4-flash"
-
-  api_key: ""                       # API Key（建议使用环境变量 AI_API_KEY）
+  # 如果你对于看英文文档比较头疼，那么可以点击页面右下角的 【Ask AI】 ,用中文询问怎么配置 
   
-  api_base: ""                      # 自定义 API 地址（可选，绝大多数情况留空即可）
+  model: "deepseek/deepseek-v4-flash"   # DeepSeek V4 Flash（1M context, $0.14/$0.28 per M tokens）
+
+  api_key: ""                       # ⚠️ 不要在这里填 key！
+                                    # 已通过环境变量 AI_API_KEY 加载（在 ~/.zshrc 里设置即可）
+
+  api_base: ""                      # 自定义 API 端点（可选，大多数情况留空）
+                                    # 示例: https://api.openai.com/v1（自建代理或兼容接口）
                                     #
                                     # ❓ 什么时候需要填？
                                     #    当你使用的 AI 服务商不在上方支持列表中时。
@@ -374,9 +760,9 @@ ai:
   max_tokens: 5000                  # 最大生成 token 数
                                     # 注意：如果 API 不支持此参数(报 HTTP 400)，请设为 0 以禁用发送
   # 高级选项
-  num_retries: 1                    # 失败重试次数
-  fallback_models: []               # 备用模型列表（可选）
-                                    # 示例: ["openai/gpt-4o-mini", "openai/deepseek-ai/DeepSeek-V3"]
+  num_retries: 2                    # 失败重试次数（V4 偶尔抖动，2 次更稳）
+  fallback_models:                  # 备用模型：v4-flash 如果挂了或被限流，自动切到 chat（=同一个模型的旧名）
+    - "deepseek/deepseek-chat"
 
   # 额外参数（一般无需修改，删掉 # 号即可启用）
   # extra_params:

@@ -35,12 +35,15 @@ class ParsedRSSItem:
 class RSSParser:
     """RSS 解析器"""
 
-    def __init__(self, max_summary_length: int = 500):
+    def __init__(self, max_summary_length: int = 10000):
         """
         初始化解析器
 
         Args:
             max_summary_length: 摘要最大长度
+                2026-05-18 改: 500 → 10000。原值会把 Substack/Latent Space 这种发全文的
+                feed (content:encoded ≥ 100k 字) 截到没用,让 AI 看不到 transcript / blog 全文。
+                10000 (~2500 token) 足够 transcript / 长文章,DB 增长可接受。
         """
         if not HAS_FEEDPARSER:
             raise ImportError("RSS 解析需要安装 feedparser: pip install feedparser")
@@ -304,14 +307,21 @@ class RSSParser:
         return None
 
     def _parse_summary(self, entry: Any) -> Optional[str]:
-        """解析摘要"""
-        summary = entry.get("summary") or entry.get("description", "")
+        """解析摘要
 
-        if not summary:
-            # 尝试从 content 获取
-            content = entry.get("content", [])
-            if content and isinstance(content, list):
-                summary = content[0].get("value", "")
+        2026-05-18 修: 优先用 content[0].value (RSS 2.0 content:encoded) 当它显著长于
+        summary/description。content:encoded 是"全文"字段,summary 通常只是摘要;
+        Substack/Latent Space 等会发整篇文章/transcript 进 content:encoded,旧代码
+        因为 summary 字段也非空就跳过了 content,丢失了 99% 的内容(实测 165 vs 134246 字)。
+        """
+        summary = entry.get("summary") or entry.get("description") or ""
+
+        # 比较 content:encoded(feedparser 暴露为 entry.content[0].value),取长的
+        content = entry.get("content") or []
+        if content and isinstance(content, list):
+            content_val = content[0].get("value", "") or ""
+            if len(content_val) > len(summary):
+                summary = content_val
 
         if not summary:
             return None

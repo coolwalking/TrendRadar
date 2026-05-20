@@ -9,6 +9,9 @@ AI 客户端模块
 import os
 from typing import Any, Dict, List
 
+# 必须在 from litellm import completion 之前 import,执行 monkey-patch
+from trendradar import _litellm_silence  # noqa: F401
+
 from litellm import completion
 
 

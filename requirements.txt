@@ -8,3 +8,6 @@ boto3==1.42.76
 litellm==1.82.6
 json-repair==0.58.6
 tenacity==8.5.0
+bilibili-api-python  # 2026-05-12 加: sync_bilibili.py 用
+ddgs==9.14.4         # 2026-05-18 加: web_research_enrich.py 用,陌生术语补背景
+trafilatura==2.0.0   # 2026-05-18 加: article_body_enricher.py 用,抓新闻/HN/GitHub README 全文
