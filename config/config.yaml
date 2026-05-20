@@ -723,8 +723,8 @@ ai:
   #   - anthropic/claude-sonnet-4-20250514 (Anthropic)
   #   - ollama/llama3 (本地 Ollama)
   # 完整列表: https://docs.litellm.ai/docs/providers
-  # 如果你对于看英文文档比较头疼，那么可以点击页面右下角的 【Ask AI】 ,用中文询问怎么配置 
-  
+  # 如果你对于看英文文档比较头疼，那么可以点击页面右下角的 【Ask AI】 ,用中文询问怎么配置
+
   model: "deepseek/deepseek-v4-flash"   # DeepSeek V4 Flash（1M context, $0.14/$0.28 per M tokens）
 
   api_key: ""                       # ⚠️ 不要在这里填 key！
