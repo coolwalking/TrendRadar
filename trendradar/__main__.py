@@ -1682,13 +1682,9 @@ class NewsAnalyzer:
                 schedule=schedule,
             )
 
-        # 打开浏览器（仅在非容器环境）
-        if self._should_open_browser() and html_file:
-            file_url = "file://" + str(Path(html_file).resolve())
-            print(f"正在打开HTML报告: {file_url}")
-            webbrowser.open(file_url)
-        elif self.is_docker_container and html_file:
-            print(f"HTML报告已生成（Docker环境）: {html_file}")
+        # 不再自动打开浏览器(后台静默运行)
+        if html_file:
+            print(f"HTML报告已生成: {html_file}")
 
         return html_file
 
@@ -2278,4 +2274,11 @@ def _handle_status_commands(config: Dict) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # main() 正常返回后,直接强退绕过 atexit。
+    # LiteLLM 等第三方库会在 import 时起后台线程,Python 默认会等它们 join,
+    # 偶尔会卡 14+ 分钟。我们已经把工作做完了,不需要等。
+    try:
+        main()
+    except SystemExit as e:
+        os._exit(int(e.code) if isinstance(e.code, int) else 0)
+    os._exit(0)

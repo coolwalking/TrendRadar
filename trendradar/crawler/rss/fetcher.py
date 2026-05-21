@@ -71,7 +71,7 @@ class RSSFetcher:
         """创建请求会话"""
         session = requests.Session()
         session.headers.update({
-            "User-Agent": "TrendRadar/2.0 RSS Reader (https://github.com/trendradar)",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
             "Accept": "application/feed+json, application/json, application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
             "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
         })
@@ -137,10 +137,17 @@ class RSSFetcher:
             (条目列表, 错误信息) 元组
         """
         try:
-            response = self.session.get(feed.url, timeout=self.timeout)
-            response.raise_for_status()
+            # 2026-05-12 加: 支持 file:// 协议(本地同步脚本 sync_bilibili.py 写的 RSS XML)
+            if feed.url.startswith("file://"):
+                local_path = feed.url[len("file://"):]
+                with open(local_path, "r", encoding="utf-8") as f:
+                    response_text = f.read()
+            else:
+                response = self.session.get(feed.url, timeout=self.timeout)
+                response.raise_for_status()
+                response_text = response.text
 
-            parsed_items = self.parser.parse(response.text, feed.url)
+            parsed_items = self.parser.parse(response_text, feed.url)
 
             # 限制条目数量（0=不限制）
             if feed.max_items > 0:

@@ -1,0 +1,282 @@
+# Daily Digest configuration for focused western news, GitHub, and social sources.
+#
+# Run:
+#   python -m trendradar.daily_digest
+#
+# Model switching:
+#   - provider: deepseek     DeepSeek OpenAI-compatible API
+#   - provider: minimax      MiniMax OpenAI-compatible API
+#   - provider: ollama       local model, no cloud API key
+#   - provider: litellm      Gemini / DeepSeek / OpenRouter / other services
+
+timezone: "America/Los_Angeles"
+language: "Chinese"
+
+topics:
+  - name: "GitHub 热点项目"
+    priority: 1
+    keywords:
+      - "github"
+      - "open source"
+      - "repository"
+      - "repo"
+      - "stars today"
+
+  - name: "AI 与前沿模型"
+    priority: 2
+    keywords:
+      - "ai"
+      - "artificial intelligence"
+      - "openai"
+      - "anthropic"
+      - "google deepmind"
+      - "deepmind"
+      - "gemini"
+      - "deepseek"
+      - "llm"
+      - "large language model"
+      - "ai agent"
+      - "ai agents"
+      - "agentic"
+      - "inference"
+      - "reasoning model"
+      - "foundation model"
+      - "nvidia"
+      - "semiconductor"
+      - "chip"
+      - "datacenter"
+      - "data center"
+      - "robotics"
+      - "automation"
+
+  - name: "生物医疗工程"
+    priority: 3
+    keywords:
+      - "biomedical engineering"
+      - "bioengineering"
+      - "medical device"
+      - "medtech"
+      - "biotech"
+      - "synthetic biology"
+      - "gene therapy"
+      - "crispr"
+      - "clinical trial"
+      - "fda"
+      - "diagnostic"
+      - "wearable health"
+      - "prosthetic"
+      - "implant"
+      - "tissue engineering"
+      - "regenerative medicine"
+
+  - name: "国际局势"
+    priority: 4
+    keywords:
+      - "trump"
+      - "white house"
+      - "congress"
+      - "europe"
+      - "china"
+      - "ukraine"
+      - "middle east"
+      - "tariff"
+      - "sanctions"
+      - "nato"
+      - "iran"
+      - "russia"
+      - "security"
+      - "war"
+      - "ceasefire"
+      - "election"
+      - "diplomacy"
+      - "defense"
+      - "trade"
+
+sources:
+  - id: "github-trending"
+    name: "GitHub Trending"
+    type: "github_trending"
+    category: "github"
+    url: "https://github.com/trending?since=daily"
+    enabled: true
+
+  - id: "hacker-news"
+    name: "Hacker News"
+    type: "rss"
+    category: "social"
+    url: "https://hnrss.org/frontpage"
+    enabled: true
+
+  - id: "product-hunt"
+    name: "Product Hunt"
+    type: "rss"
+    category: "social"
+    url: "https://www.producthunt.com/feed"
+    enabled: true
+
+  - id: "techcrunch"
+    name: "TechCrunch"
+    type: "rss"
+    category: "tech"
+    url: "https://techcrunch.com/feed/"
+    enabled: true
+
+  - id: "the-verge"
+    name: "The Verge"
+    type: "rss"
+    category: "tech"
+    url: "https://www.theverge.com/rss/index.xml"
+    enabled: true
+
+  - id: "wired"
+    name: "Wired"
+    type: "rss"
+    category: "tech"
+    url: "https://www.wired.com/feed/rss"
+    enabled: true
+
+  - id: "mit-tech-review"
+    name: "MIT Technology Review"
+    type: "rss"
+    category: "tech"
+    url: "https://www.technologyreview.com/feed/"
+    enabled: true
+
+  - id: "google-news-ai"
+    name: "Google News: AI"
+    type: "rss"
+    category: "aggregator"
+    url: "https://news.google.com/rss/search?q=%28artificial%20intelligence%20OR%20OpenAI%20OR%20Anthropic%20OR%20DeepMind%20OR%20DeepSeek%20OR%20Nvidia%20OR%20AI%20agents%29%20when%3A1d&hl=en-US&gl=US&ceid=US:en"
+    enabled: true
+
+  - id: "google-news-github-open-source"
+    name: "Google News: GitHub and Open Source"
+    type: "rss"
+    category: "aggregator"
+    url: "https://news.google.com/rss/search?q=%28GitHub%20OR%20open%20source%20OR%20developer%20tools%20OR%20repository%29%20when%3A1d&hl=en-US&gl=US&ceid=US:en"
+    enabled: true
+
+  - id: "google-news-biomedical-engineering"
+    name: "Google News: Biomedical Engineering"
+    type: "rss"
+    category: "aggregator"
+    url: "https://news.google.com/rss/search?q=%28biomedical%20engineering%20OR%20bioengineering%20OR%20medical%20device%20OR%20medtech%20OR%20synthetic%20biology%20OR%20tissue%20engineering%20OR%20gene%20therapy%20OR%20CRISPR%29%20when%3A1d&hl=en-US&gl=US&ceid=US:en"
+    enabled: true
+
+  - id: "google-news-biotech"
+    name: "Google News: Biotech and Clinical Trials"
+    type: "rss"
+    category: "aggregator"
+    url: "https://news.google.com/rss/search?q=%28biotech%20OR%20clinical%20trial%20OR%20FDA%20approval%20OR%20diagnostic%20OR%20regenerative%20medicine%20OR%20implant%20OR%20prosthetic%29%20when%3A1d&hl=en-US&gl=US&ceid=US:en"
+    enabled: true
+
+  - id: "bbc-world"
+    name: "BBC World"
+    type: "rss"
+    category: "news"
+    url: "https://feeds.bbci.co.uk/news/world/rss.xml"
+    enabled: true
+
+  - id: "nytimes-world"
+    name: "The New York Times World"
+    type: "rss"
+    category: "news"
+    url: "https://rss.nytimes.com/services/xml/rss/nyt/World.xml"
+    enabled: true
+
+  - id: "guardian-world"
+    name: "The Guardian World"
+    type: "rss"
+    category: "news"
+    url: "https://www.theguardian.com/world/rss"
+    enabled: true
+
+  - id: "aljazeera"
+    name: "Al Jazeera"
+    type: "rss"
+    category: "news"
+    url: "https://www.aljazeera.com/xml/rss/all.xml"
+    enabled: true
+
+  - id: "npr-news"
+    name: "NPR News"
+    type: "rss"
+    category: "news"
+    url: "https://feeds.npr.org/1001/rss.xml"
+    enabled: true
+
+  - id: "reddit-worldnews"
+    name: "Reddit r/worldnews"
+    type: "rss"
+    category: "social"
+    url: "https://www.reddit.com/r/worldnews/.rss"
+    enabled: true
+
+  - id: "reddit-technology"
+    name: "Reddit r/technology"
+    type: "rss"
+    category: "social"
+    url: "https://www.reddit.com/r/technology/.rss"
+    enabled: true
+
+  - id: "google-news-international"
+    name: "Google News: International Affairs"
+    type: "rss"
+    category: "aggregator"
+    url: "https://news.google.com/rss/search?q=%28Ukraine%20OR%20Iran%20OR%20China%20OR%20NATO%20OR%20sanctions%20OR%20ceasefire%20OR%20Middle%20East%20OR%20Russia%20OR%20security%29%20when%3A1d&hl=en-US&gl=US&ceid=US:en"
+    enabled: true
+
+fetch:
+  max_items_per_source: 35
+  max_total_items: 220
+  include_undated_items: false
+  request_timeout: 20
+  retry_count: 2
+
+ai:
+  provider: "deepseek"
+  model: "deepseek-v4-flash"
+  api_base: "https://api.deepseek.com"
+  api_key: ""
+  api_key_env: "DEEPSEEK_API_KEY"
+  temperature: 1.0
+  max_tokens: 6000
+  max_prompt_items_per_topic: 12
+  timeout: 180
+  fallback_to_extractive: true
+
+  # Examples:
+  # MiniMax:
+  #   provider: "minimax"
+  #   model: "MiniMax-M2.7"
+  #   api_base: "https://api.minimax.io/v1"
+  #   api_key_env: "MINIMAX_API_KEY"
+  #
+  # Ollama local model:
+  #   provider: "ollama"
+  #   model: "qwen2.5:7b"
+  #   api_base: "http://localhost:11434"
+  #
+  # Gemini low-cost/free-tier style:
+  #   provider: "litellm"
+  #   model: "gemini/gemini-2.5-flash-lite"
+  #   api_key_env: "GEMINI_API_KEY"
+  #
+  # DeepSeek:
+  #   provider: "litellm"
+  #   model: "deepseek/deepseek-chat"
+  #   api_key_env: "DEEPSEEK_API_KEY"
+  #
+  # OpenAI-compatible gateway such as OpenRouter / 302.AI / SiliconFlow:
+  #   provider: "litellm"
+  #   model: "openai/provider-model-name"
+  #   api_base: "https://example.com/v1"
+  #   api_key_env: "AI_API_KEY"
+
+notification:
+  # Keep false until you have configured a channel in config/config.yaml.
+  enabled: false
+  channels:
+    - "ntfy"
+    - "telegram"
+    - "generic_webhook"
