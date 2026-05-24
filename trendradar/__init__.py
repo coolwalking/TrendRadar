@@ -11,4 +11,3 @@ from trendradar.context import AppContext
 
 __version__ = "6.7.0"
 __all__ = ["AppContext", "__version__"]
-
