@@ -1,4 +1,4 @@
-  app:
+app:
     timezone: "Asia/Shanghai"
     show_version_update: false
 
