@@ -2,10 +2,10 @@ app:
     timezone: "Asia/Shanghai"
     show_version_update: false
 
-  schedule:
+schedule:
     enabled: false
 
-  platforms:
+platforms:
     enabled: true
     sources:
       - id: "baidu"
@@ -25,7 +25,7 @@ app:
       - id: "ifeng"
         name: "凤凰网"
 
-  rss:
+rss:
     enabled: true
     freshness_filter:
       enabled: true
@@ -45,17 +45,17 @@ app:
         url: "https://sinocism.com/feed"
         max_age_days: 7
 
-  report:
+report:
     mode: "incremental"
     display_mode: "keyword"
     sort_by_position_first: false
     rank_threshold: 10
     max_news_per_keyword: 5
 
-  filter:
+filter:
     method: "keyword"
 
-  display:
+display:
     region_order:
       - hotlist
       - rss
@@ -67,20 +67,20 @@ app:
       standalone: false
       ai_analysis: true
 
-  notification:
+notification:
     enabled: true
     channels:
       feishu:
         webhook_url: ""
 
-  ai:
+ai:
     model: "deepseek/deepseek-chat"
     api_key: ""
     timeout: 60
     temperature: 1.0
     max_tokens: 3000
 
-  ai_analysis:
+ai_analysis:
     enabled: true
     language: "Chinese"
     mode: "follow_report"
@@ -89,7 +89,7 @@ app:
     include_standalone: false
     include_rank_timeline: false
 
-  ai_translation:
+ai_translation:
     enabled: true
     language: "中文"
     scope:
@@ -97,7 +97,7 @@ app:
       rss: true
       standalone: false
 
-  storage:
+storage:
     backend: "auto"
     formats:
       sqlite: true
@@ -107,7 +107,7 @@ app:
       data_dir: "output"
       retention_days: 7
 
-  advanced:
+advanced:
     debug: false
     crawler:
       request_interval: 2000
