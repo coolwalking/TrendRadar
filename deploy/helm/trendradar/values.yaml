@@ -28,6 +28,12 @@ cronSchedule: "*/30 * * * *"
 immediateRun: true         # 启动时立即执行一次
 timezone: "Asia/Shanghai"
 
+# --- 调度系统 ---
+schedule:
+  enabled: ""                # true | false，留空使用 config.yaml 中的值
+  preset: ""                 # morning_evening | always_on | office_hours | night_owl | custom
+reportMode: ""               # daily | current | incremental，留空使用 config.yaml 中的值
+
 # --- Web Server ---
 webserver:
   port: 8080

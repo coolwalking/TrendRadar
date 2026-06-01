@@ -10,3 +10,12 @@ data:
   CRON_SCHEDULE: {{ .Values.cronSchedule | quote }}
   IMMEDIATE_RUN: {{ .Values.immediateRun | quote }}
   WEBSERVER_PORT: {{ .Values.webserver.port | quote }}
+  {{- if .Values.schedule.enabled }}
+  SCHEDULE_ENABLED: {{ .Values.schedule.enabled | quote }}
+  {{- end }}
+  {{- if .Values.schedule.preset }}
+  SCHEDULE_PRESET: {{ .Values.schedule.preset | quote }}
+  {{- end }}
+  {{- if .Values.reportMode }}
+  REPORT_MODE: {{ .Values.reportMode | quote }}
+  {{- end }}
