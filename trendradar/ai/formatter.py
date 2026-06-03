@@ -211,26 +211,161 @@ def _render_env_telegram(result: AIAnalysisResult) -> str:
     lines = [f"<b>{_escape_html(ENV_TITLE)}</b>", ""]
     for heading, body in _environment_blocks(result):
         lines.append(f"<b>{_escape_html(heading)}</b>")
-        lines.append(_escape_html(body))
+        lines.append(_escape_html(body).replace(" ｜ ", "\n"))
         lines.append("")
     return "\n".join(lines).rstrip()
 
 
+def _env_html_text(text: str) -> str:
+    """HTML 正文段落：保留换行，不把结构信息挤成一行。"""
+    return _escape_html((text or "").strip()).replace("\n", "<br>")
+
+
+def _env_platform_preview(platforms: str, max_count: int = 6) -> str:
+    """平台列表在 HTML 标签里限长展示，避免一行标签撑爆版面。"""
+    parts = [p.strip() for p in re.split(r"[、,，]", platforms or "") if p.strip()]
+    if len(parts) <= max_count:
+        return "、".join(parts)
+    return "、".join(parts[:max_count]) + f" 等 {len(parts)} 个"
+
+
+def _env_html_chip(label: str, value: object, css_class: str = "") -> str:
+    if value is None or value == "" or value == "-":
+        return ""
+    extra = f" {css_class}" if css_class else ""
+    return (
+        f'<span class="env-chip{extra}">'
+        f'<span class="env-chip-label">{_escape_html(label)}</span>'
+        f'<span class="env-chip-value">{_escape_html(str(value))}</span>'
+        "</span>"
+    )
+
+
+def _env_html_item(item: dict) -> str:
+    topic = _escape_html(item.get("topic", ""))
+    status = _escape_html(item.get("verification_status", ""))
+    summary = _env_html_text(item.get("summary", ""))
+    analysis = _env_html_text(item.get("analysis", ""))
+    risk = _env_html_text(item.get("risk_note") or item.get("factual_boundary"))
+
+    chips = [
+        _env_html_chip("层级", item.get("source_layers"), "env-chip-layer"),
+        _env_html_chip("平台", _env_platform_preview(item.get("platforms", "")), "env-chip-platform"),
+        _env_html_chip("数量", item.get("platform_count"), "env-chip-count"),
+        _env_html_chip("热度", item.get("highest_heat"), "env-chip-heat"),
+    ]
+    if item.get("sentiment_flag"):
+        chips.append('<span class="env-chip env-chip-sentiment">含情绪信号</span>')
+    chips_html = "".join(ch for ch in chips if ch)
+
+    summary_html = f'<div class="env-item-summary">{summary}</div>' if summary else ""
+    analysis_html = (
+        f'<div class="env-item-analysis"><span>研判</span>{analysis}</div>' if analysis else ""
+    )
+    risk_html = f'<div class="env-risk">{risk}</div>' if risk else ""
+
+    return f"""
+                            <article class="env-item">
+                                <div class="env-item-topline">
+                                    <h4 class="env-item-title">{topic}</h4>
+                                    <span class="env-status-badge">{status}</span>
+                                </div>
+                                {summary_html}
+                                <div class="env-meta">{chips_html}</div>
+                                {analysis_html}
+                                {risk_html}
+                            </article>"""
+
+
+def _render_env_overview_html(result: AIAnalysisResult) -> str:
+    r = derive_radar_readout(result.overview_stats or {})
+    ly = r["layers"]
+    overview = _env_html_text(result.overview)
+    overview_html = f'<p class="env-overview-text">{overview}</p>' if overview else ""
+    metrics = [
+        ("信号密度", f"异常 {r['anomaly']} 条", f"已抑制 {r['suppressed']} 条"),
+        ("热度/证据", f"跨层呼应 {r['cross_layer']}", f"高热待核实 {r['high_heat']}"),
+        ("中外温差", f"沉默温差 {r['silence_gap']}", f"中文独热 {r['chinese_only']}"),
+        ("层级覆盖", f"A {ly['A']} / B {ly['B']}", f"C {ly['C']} / D {ly['D']}"),
+    ]
+    metric_html = "".join(
+        f"""
+                                <div class="env-metric">
+                                    <div class="env-metric-label">{_escape_html(label)}</div>
+                                    <div class="env-metric-main">{_escape_html(main)}</div>
+                                    <div class="env-metric-sub">{_escape_html(sub)}</div>
+                                </div>"""
+        for label, main, sub in metrics
+    )
+    return f"""
+                        <section class="env-overview-panel" data-export-title="今日盘面">
+                            <div class="env-section-heading">今日盘面</div>
+                            {overview_html}
+                            <div class="env-radar-grid">{metric_html}
+                            </div>
+                        </section>"""
+
+
+def _render_env_suppressed_html(result: AIAnalysisResult) -> str:
+    suppressed = []
+    for note in (result.background_notes or []):
+        suppressed.append((note, "背景"))
+    for label in SUPPRESSED_BUCKETS:
+        for item in (getattr(result, label, []) or []):
+            suffix = " · 含情绪信号" if item.get("sentiment_flag") else ""
+            layers = item.get("source_layers", "-")
+            suppressed.append((f"{item.get('topic', '')}（{layers}）{suffix}", "抑制"))
+
+    if not suppressed:
+        return ""
+    rows = "".join(
+        f"""
+                                <li>
+                                    <span class="env-suppressed-tag">{_escape_html(tag)}</span>
+                                    <span>{_escape_html(text)}</span>
+                                </li>"""
+        for text, tag in suppressed
+    )
+    return f"""
+                        <section class="env-section-group env-section-muted" data-export-title="⑤ 已抑制 · 未达异常阈值">
+                            <div class="env-section-heading">⑤ 已抑制 · 未达异常阈值</div>
+                            <ul class="env-suppressed-list">{rows}
+                            </ul>
+                        </section>"""
+
+
 def _render_env_html_rich(result: AIAnalysisResult) -> str:
     ai_html = """
-                <div class="ai-section">
+                <div class="ai-section env-report">
                     <div class="ai-section-header">
                         <div class="ai-section-title">🛰 信息环境异常监测日报</div>
                         <span class="ai-section-badge">监测</span>
                     </div>
-                    <div class="ai-blocks-grid">"""
-    for heading, body in _environment_blocks(result):
-        content_html = _escape_html(body).replace("\n", "<br>")
+                    <div class="env-report-layout">"""
+    ai_html += _render_env_overview_html(result)
+
+    for label in SECTION_ORDER:
+        items = getattr(result, label, []) or []
+        if not items:
+            continue
+        title = _SECTION_TITLES.get(label, LABELS[label]["title"])
+        item_html = "".join(_env_html_item(it) for it in items)
         ai_html += f"""
-                    <div class="ai-block">
-                        <div class="ai-block-title">{_escape_html(heading)}</div>
-                        <div class="ai-block-content">{content_html}</div>
-                    </div>"""
+                        <section class="env-section-group" data-export-title="{_escape_html(title)}">
+                            <div class="env-section-heading">{_escape_html(title)}</div>
+                            <div class="env-item-list">{item_html}
+                            </div>
+                        </section>"""
+
+    ai_html += _render_env_suppressed_html(result)
+
+    if result.method_note:
+        ai_html += f"""
+                        <section class="env-method" data-export-title="方法说明">
+                            <div class="env-section-heading">方法说明</div>
+                            <p>{_env_html_text(result.method_note)}</p>
+                        </section>"""
+
     ai_html += """
                     </div>
                 </div>"""

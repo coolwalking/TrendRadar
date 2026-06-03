@@ -106,10 +106,13 @@ class TestEnvironmentRendering(unittest.TestCase):
         # 高热项中的情绪也以属性出现（sentiment_flag=True）
         self.assertIn("某明星瓜", out)
 
-    def test_html_uses_card_structure(self):
+    def test_html_uses_structured_report_layout(self):
         out = FMT.render_ai_analysis_html_rich(self.result)
-        self.assertIn('class="ai-section"', out)
-        self.assertIn('class="ai-block"', out)
+        self.assertIn('class="ai-section env-report"', out)
+        self.assertIn('class="env-radar-grid"', out)
+        self.assertIn('class="env-item"', out)
+        self.assertIn('class="env-chip env-chip-heat"', out)
+        self.assertNotIn('class="ai-block"', out)
 
     def test_telegram_escapes_html(self):
         # telegram 渲染应对正文做 HTML 转义（不抛异常且产出文本）
