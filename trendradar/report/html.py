@@ -861,6 +861,261 @@ def render_html_content(
                 white-space: pre-wrap;
             }
 
+            .env-report {
+                background: #ffffff;
+                border-color: #e5e7eb;
+                border-radius: 8px;
+                padding: 30px 34px;
+            }
+
+            .env-report .ai-section-header {
+                margin-bottom: 22px;
+                padding-bottom: 14px;
+                border-bottom: 1px solid #e5e7eb;
+            }
+
+            .env-report .ai-section-title {
+                color: #0f172a;
+                letter-spacing: 0;
+                font-size: 20px;
+            }
+
+            .env-report-layout {
+                display: grid;
+                gap: 24px;
+            }
+
+            .env-overview-panel,
+            .env-section-group,
+            .env-method {
+                border-top: 1px solid #e5e7eb;
+                padding-top: 18px;
+            }
+
+            .env-overview-panel {
+                border-top: 0;
+                padding-top: 0;
+            }
+
+            .env-section-heading {
+                color: #075985;
+                font-size: 15px;
+                font-weight: 700;
+                line-height: 1.4;
+                margin-bottom: 12px;
+            }
+
+            .env-overview-text {
+                color: #334155;
+                font-size: 15px;
+                line-height: 1.8;
+                margin: 0 0 16px;
+                max-width: 78ch;
+            }
+
+            .env-radar-grid {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 0;
+                border-top: 1px solid #e5e7eb;
+                border-bottom: 1px solid #e5e7eb;
+            }
+
+            .env-metric {
+                min-width: 0;
+                padding: 12px 14px 12px 0;
+                border-top: 1px solid #e5e7eb;
+            }
+
+            .env-metric:nth-child(1),
+            .env-metric:nth-child(2) {
+                border-top: 0;
+            }
+
+            .env-metric:nth-child(even) {
+                padding-left: 18px;
+                border-left: 1px solid #e5e7eb;
+            }
+
+            .env-metric-label {
+                color: #64748b;
+                font-size: 12px;
+                font-weight: 600;
+                margin-bottom: 8px;
+            }
+
+            .env-metric-main {
+                color: #0f172a;
+                font-size: 15px;
+                font-weight: 700;
+                line-height: 1.35;
+            }
+
+            .env-metric-sub {
+                color: #475569;
+                font-size: 13px;
+                line-height: 1.45;
+                margin-top: 4px;
+            }
+
+            .env-item-list {
+                display: grid;
+                gap: 14px;
+            }
+
+            .env-item {
+                padding: 0 0 14px;
+                border-bottom: 1px solid #e5e7eb;
+            }
+
+            .env-item:last-child {
+                padding-bottom: 0;
+                border-bottom: 0;
+            }
+
+            .env-item-topline {
+                display: flex;
+                align-items: flex-start;
+                justify-content: space-between;
+                gap: 12px;
+                margin-bottom: 8px;
+            }
+
+            .env-item-title {
+                color: #111827;
+                font-size: 15px;
+                font-weight: 700;
+                line-height: 1.5;
+                margin: 0;
+            }
+
+            .env-status-badge {
+                flex: 0 0 auto;
+                max-width: 180px;
+                padding-top: 2px;
+                color: #075985;
+                font-size: 12px;
+                font-weight: 700;
+                line-height: 1.35;
+                text-align: right;
+            }
+
+            .env-item-summary,
+            .env-item-analysis {
+                color: #334155;
+                font-size: 14px;
+                line-height: 1.75;
+                max-width: 92ch;
+            }
+
+            .env-item-analysis {
+                margin-top: 8px;
+            }
+
+            .env-item-analysis span {
+                display: inline-block;
+                margin-right: 6px;
+                color: #075985;
+                font-weight: 700;
+            }
+
+            .env-meta {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 4px 10px;
+                margin-top: 10px;
+            }
+
+            .env-chip {
+                display: inline-flex;
+                align-items: center;
+                max-width: 100%;
+                color: #475569;
+                font-size: 12px;
+                line-height: 1.35;
+            }
+
+            .env-chip-label {
+                color: #64748b;
+                margin-right: 4px;
+                font-weight: 600;
+            }
+
+            .env-chip-heat {
+                color: #9a3412;
+            }
+
+            .env-chip-sentiment {
+                color: #9d174d;
+                font-weight: 600;
+            }
+
+            .env-risk {
+                margin-top: 10px;
+                padding: 8px 0 8px 12px;
+                border-left: 3px solid #f59e0b;
+                color: #78350f;
+                font-size: 13px;
+                line-height: 1.65;
+            }
+
+            .env-section-muted {
+                color: #475569;
+            }
+
+            .env-suppressed-list {
+                display: grid;
+                gap: 8px;
+                margin: 0;
+                padding: 0;
+                list-style: none;
+                color: #475569;
+                font-size: 13px;
+                line-height: 1.6;
+            }
+
+            .env-suppressed-list li {
+                display: flex;
+                gap: 8px;
+                align-items: flex-start;
+            }
+
+            .env-suppressed-tag {
+                flex: 0 0 auto;
+                color: #64748b;
+                font-size: 12px;
+                font-weight: 700;
+            }
+
+            .env-method p {
+                margin: 0;
+                color: #64748b;
+                font-size: 13px;
+                line-height: 1.7;
+            }
+
+            @media (max-width: 480px) {
+                .env-report { padding: 20px; }
+                .env-radar-grid { grid-template-columns: 1fr; }
+                .env-metric,
+                .env-metric:nth-child(even) {
+                    padding-left: 0;
+                    border-left: 0;
+                }
+                .env-metric:nth-child(2) {
+                    border-top: 1px solid #e5e7eb;
+                }
+                .env-item-topline {
+                    display: grid;
+                    gap: 8px;
+                }
+                .env-status-badge {
+                    max-width: 100%;
+                    width: fit-content;
+                    text-align: left;
+                }
+            }
+
             .ai-error {
                 padding: 16px;
                 background: #fef2f2;
@@ -910,6 +1165,14 @@ def render_html_content(
                 gap: 16px;
             }
             body.wide-mode .ai-block { margin-bottom: 0; }
+
+            body.wide-mode .env-report .ai-blocks-grid {
+                display: block;
+            }
+
+            body.wide-mode .env-radar-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
 
             /* 宽屏模式 - 新增热点多列 */
             body.wide-mode .new-section .new-sources-grid {
@@ -1302,6 +1565,57 @@ def render_html_content(
             }
             body.dark-mode .ai-block-title { color: #a5b4fc; }
             body.dark-mode .ai-block-content { color: #cbd5e1; }
+            body.dark-mode .env-report {
+                background: #0f172a;
+                border-color: #334155;
+            }
+            body.dark-mode .env-report .ai-section-header,
+            body.dark-mode .env-overview-panel,
+            body.dark-mode .env-section-group,
+            body.dark-mode .env-method,
+            body.dark-mode .env-item {
+                border-color: #334155;
+            }
+            body.dark-mode .env-report .ai-section-title,
+            body.dark-mode .env-item-title,
+            body.dark-mode .env-metric-main {
+                color: #e5e7eb;
+            }
+            body.dark-mode .env-section-heading,
+            body.dark-mode .env-item-analysis span {
+                color: #7dd3fc;
+            }
+            body.dark-mode .env-overview-text,
+            body.dark-mode .env-item-summary,
+            body.dark-mode .env-item-analysis {
+                color: #cbd5e1;
+            }
+            body.dark-mode .env-metric,
+            body.dark-mode .env-chip,
+            body.dark-mode .env-suppressed-tag {
+                border-color: #334155;
+                color: #cbd5e1;
+            }
+            body.dark-mode .env-metric-label,
+            body.dark-mode .env-metric-sub,
+            body.dark-mode .env-chip-label,
+            body.dark-mode .env-method p,
+            body.dark-mode .env-suppressed-list {
+                color: #94a3b8;
+            }
+            body.dark-mode .env-status-badge {
+                color: #bae6fd;
+            }
+            body.dark-mode .env-chip-heat {
+                color: #fed7aa;
+            }
+            body.dark-mode .env-chip-sentiment {
+                color: #fbcfe8;
+            }
+            body.dark-mode .env-risk {
+                border-left-color: #f59e0b;
+                color: #fcd34d;
+            }
             body.dark-mode .ai-warning {
                 background: #422006;
                 border-color: #854d0e;
@@ -1565,7 +1879,7 @@ def render_html_content(
     if report_data["failed_ids"]:
         html += """
                 <div class="error-section">
-                    <div class="error-title">⚠️ 请求失败的平台</div>
+                    <div class="error-title">请求失败的平台</div>
                     <ul class="error-list">"""
         for id_value in report_data["failed_ids"]:
             html += f'<li class="error-item">{html_escape(id_value)}</li>'
@@ -3010,19 +3324,83 @@ def render_html_content(
                         var aiTitle = aiSection.querySelector('.ai-section-title');
                         lines.push('## ' + (aiTitle ? aiTitle.textContent.trim() : 'AI 热点分析'));
                         lines.push('');
-                        var aiBlocks = aiSection.querySelectorAll('.ai-block');
-                        aiBlocks.forEach(function(block) {
-                            var blockTitle = block.querySelector('.ai-block-title');
-                            var blockContent = block.querySelector('.ai-block-content');
-                            if (blockTitle) {
-                                lines.push('### ' + blockTitle.textContent.trim());
+                        if (aiSection.classList.contains('env-report')) {
+                            var overviewPanel = aiSection.querySelector('.env-overview-panel');
+                            if (overviewPanel) {
+                                lines.push('### ' + (overviewPanel.dataset.exportTitle || '今日盘面'));
+                                lines.push('');
+                                var overviewText = overviewPanel.querySelector('.env-overview-text');
+                                if (overviewText) {
+                                    lines.push(overviewText.textContent.trim());
+                                    lines.push('');
+                                }
+                                overviewPanel.querySelectorAll('.env-metric').forEach(function(metric) {
+                                    var label = metric.querySelector('.env-metric-label');
+                                    var main = metric.querySelector('.env-metric-main');
+                                    var sub = metric.querySelector('.env-metric-sub');
+                                    var metricLine = '- ' + (label ? label.textContent.trim() : '');
+                                    if (main) metricLine += '：' + main.textContent.trim();
+                                    if (sub) metricLine += '；' + sub.textContent.trim();
+                                    lines.push(metricLine);
+                                });
                                 lines.push('');
                             }
-                            if (blockContent) {
-                                lines.push(blockContent.textContent.trim());
+
+                            aiSection.querySelectorAll('.env-section-group').forEach(function(group) {
+                                var heading = group.querySelector('.env-section-heading');
+                                lines.push('### ' + (group.dataset.exportTitle || (heading ? heading.textContent.trim() : '监测栏目')));
+                                lines.push('');
+                                var items = group.querySelectorAll('.env-item');
+                                if (items.length) {
+                                    items.forEach(function(item) {
+                                        var title = item.querySelector('.env-item-title');
+                                        var status = item.querySelector('.env-status-badge');
+                                        var itemLine = '- ' + (title ? title.textContent.trim() : '');
+                                        if (status) itemLine += '（' + status.textContent.trim() + '）';
+                                        lines.push(itemLine);
+                                        var summary = item.querySelector('.env-item-summary');
+                                        if (summary) lines.push('  ' + summary.textContent.trim());
+                                        var metaText = Array.from(item.querySelectorAll('.env-chip')).map(function(chip) {
+                                            return chip.textContent.trim();
+                                        }).filter(Boolean).join(' | ');
+                                        if (metaText) lines.push('  ' + metaText);
+                                        var analysis = item.querySelector('.env-item-analysis');
+                                        if (analysis) lines.push('  ' + analysis.textContent.trim());
+                                        var risk = item.querySelector('.env-risk');
+                                        if (risk) lines.push('  ' + risk.textContent.trim());
+                                    });
+                                } else {
+                                    group.querySelectorAll('.env-suppressed-list li').forEach(function(row) {
+                                        lines.push('- ' + row.textContent.trim());
+                                    });
+                                }
+                                lines.push('');
+                            });
+
+                            var method = aiSection.querySelector('.env-method');
+                            if (method) {
+                                var methodHeading = method.querySelector('.env-section-heading');
+                                lines.push('### ' + (method.dataset.exportTitle || (methodHeading ? methodHeading.textContent.trim() : '方法说明')));
+                                lines.push('');
+                                var methodText = method.querySelector('p');
+                                if (methodText) lines.push(methodText.textContent.trim());
                                 lines.push('');
                             }
-                        });
+                        } else {
+                            var aiBlocks = aiSection.querySelectorAll('.ai-block');
+                            aiBlocks.forEach(function(block) {
+                                var blockTitle = block.querySelector('.ai-block-title');
+                                var blockContent = block.querySelector('.ai-block-content');
+                                if (blockTitle) {
+                                    lines.push('### ' + blockTitle.textContent.trim());
+                                    lines.push('');
+                                }
+                                if (blockContent) {
+                                    lines.push(blockContent.textContent.trim());
+                                    lines.push('');
+                                }
+                            });
+                        }
                     }
                 }
 

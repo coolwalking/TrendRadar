@@ -1,0 +1,142 @@
+# ═══════════════════════════════════════════════════════════════
+#              TrendRadar 来源分层配置（信息环境异常监测）
+#                      Version: 1.0.0
+# ═══════════════════════════════════════════════════════════════
+#
+# 定义平台 / RSS feed 的证据层级（source tier）与角色（role）。
+#
+# 重要：
+#   - tier 是"来源层级"的证据解释标签，不是事实真伪判断。
+#   - 缺失 tier 的来源一律按 unknown 处理，不会报错、不会阻断运行。
+#   - 这层是 source-level，不做 content-level 的可信度判断。
+#
+# 层级含义：
+#   A  一手/官方来源     —— 官方公告、公司博客、研究机构一手发布
+#   B  国际媒体/背景源   —— 国际通讯社、国际媒体、技术社区、财经背景源
+#   C  中文相对严肃信息源 —— 中文媒体、财经媒体、问答/搜索等相对结构化来源
+#   D  高时效低可信传播平台 —— 社交/热搜/社区平台，主要提供早期传播与情绪信号
+#
+# platforms / rss_feeds 的 key 必须与 config.yaml 中对应的 id 一致。
+# ═══════════════════════════════════════════════════════════════
+
+tiers:
+  A:
+    name: "一手/官方来源"
+    description: "官方公告、公司博客、研究机构一手发布"
+  B:
+    name: "国际媒体/背景源"
+    description: "国际通讯社、国际媒体、技术社区、财经背景源"
+  C:
+    name: "中文相对严肃信息源"
+    description: "中文媒体、财经媒体、问答/搜索等相对结构化来源"
+  D:
+    name: "高时效低可信传播平台"
+    description: "社交平台、热搜平台、社区平台，主要提供早期传播和情绪信号"
+
+
+# ───────────────────────────────────────────────────────────────
+# 热榜平台（id 对应 config.yaml platforms.sources）
+# ───────────────────────────────────────────────────────────────
+platforms:
+  weibo:
+    tier: D
+    role: "social_hotlist"
+  douyin:
+    tier: D
+    role: "short_video_hotlist"
+  tieba:
+    tier: D
+    role: "forum_hotlist"
+  bilibili-hot-search:
+    tier: D
+    role: "youth_subculture_hotlist"
+  toutiao:
+    tier: C
+    role: "chinese_news_distribution"
+  baidu:
+    tier: C
+    role: "search_interest"
+  zhihu:
+    tier: C
+    role: "discussion_platform"
+  wallstreetcn-hot:
+    tier: C
+    role: "chinese_finance_media"
+  cls-hot:
+    tier: C
+    role: "chinese_finance_media"
+  thepaper:
+    tier: C
+    role: "chinese_news_media"
+  ifeng:
+    tier: C
+    role: "chinese_news_media"
+
+
+# ───────────────────────────────────────────────────────────────
+# RSS 订阅（id 对应 config.yaml rss.feeds）
+# ───────────────────────────────────────────────────────────────
+rss_feeds:
+  # A —— AI 公司/研究机构官方源
+  openai-news:
+    tier: A
+    role: "official_ai_source"
+  openai-developers:
+    tier: A
+    role: "official_ai_developer_source"
+  anthropic-news-openrss:
+    tier: A
+    role: "official_ai_source"
+  anthropic-research-openrss:
+    tier: A
+    role: "official_ai_research_source"
+  google-ai-blog:
+    tier: A
+    role: "official_ai_source"
+  google-research-blog:
+    tier: A
+    role: "official_ai_research_source"
+  google-deepmind-blog:
+    tier: A
+    role: "official_ai_research_source"
+
+  # B —— 国际媒体/背景源
+  reuters-via-google-news:
+    tier: B
+    role: "international_wire"
+  ap-via-google-news:
+    tier: B
+    role: "international_wire"
+  bbc-world:
+    tier: B
+    role: "international_media"
+  guardian-world:
+    tier: B
+    role: "international_media"
+  washingtonpost-world:
+    tier: B
+    role: "international_media"
+  washingtonpost-technology:
+    tier: B
+    role: "international_technology_media"
+  nyt-world:
+    tier: B
+    role: "international_media"
+  nyt-business:
+    tier: B
+    role: "international_business_media"
+  nyt-technology:
+    tier: B
+    role: "international_technology_media"
+  nyt-ai:
+    tier: B
+    role: "international_ai_media"
+  hacker-news:
+    tier: B
+    role: "technical_community"
+  ruanyifeng:
+    tier: B
+    role: "technical_background_source"
+  yahoo-finance:
+    tier: B
+    role: "finance_background_source"

@@ -493,7 +493,13 @@ ai_analysis:
                                     # 开启 schedule 后此项仍为总开关：false=永远不分析，true=由调度控制
 
   language: "Chinese"               # 分析报告语言（如 "English", "Korean", "法语"）
-  prompt_file: "ai_analysis_prompt.txt"   # 提示词文件（相对于 config 目录）
+
+  # 报告风格（信息环境异常监测改造）
+  #   environment = 信息环境异常监测日报（默认）—— 验证状态由程序规则生成，AI 只写文字
+  #   classic     = 旧版"高级情报分析师"热点分析
+  report_style: "environment"
+  prompt_file: "ai_analysis_prompt.txt"   # classic 风格使用的提示词文件
+  environment_prompt_file: "ai_environment_report_prompt.txt"  # environment 风格使用的提示词文件
 
   mode: "follow_report"             # AI 分析模式（可独立于 report.mode）
                                     # follow_report = 跟随 report.mode（默认）
