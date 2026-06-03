@@ -10,14 +10,14 @@ import re
 from .analyzer import AIAnalysisResult
 from .evidence import LABELS, SECTION_ORDER, SUPPRESSED_BUCKETS, derive_radar_readout
 
-ENV_TITLE = "🛰 信息环境异常监测日报"
+ENV_TITLE = "信息环境异常监测日报"
 
 # 呈现层：各监测栏目的用户可见标题（含阅读动作前缀）。顺序由 SECTION_ORDER 决定。
 _SECTION_TITLES = {
-    "cross_layer_verified": "① 优先看 · 跨层呼应",
-    "high_heat_unverified": "② 隔离看 · 高热待核实",
-    "chinese_only_hot": "③ 中文独热（中热缺外）",
-    "silence_gap": "④ 沉默温差（外热中静）",
+    "cross_layer_verified": "1. 优先看：跨层呼应",
+    "high_heat_unverified": "2. 隔离看：高热待核实",
+    "chinese_only_hot": "3. 中文独热：中热缺外",
+    "silence_gap": "4. 沉默温差：外热中静",
 }
 
 
@@ -97,7 +97,7 @@ def _env_item_lines(item: dict) -> str:
     topic = item.get("topic", "")
     vs = item.get("verification_status", "")
     flag = "（含情绪信号）" if item.get("sentiment_flag") else ""
-    lines.append(f"▸ {topic}（{vs}）{flag}")
+    lines.append(f"- {topic}（{vs}）{flag}")
 
     summary = (item.get("summary") or "").strip()
     if summary:
@@ -120,7 +120,7 @@ def _env_item_lines(item: dict) -> str:
 
     risk = item.get("risk_note") or item.get("factual_boundary")
     if risk:
-        lines.append(f"⚠ {risk}")
+        lines.append(f"风险提示：{risk}")
     return "\n".join(lines)
 
 
@@ -169,7 +169,7 @@ def _environment_blocks(result: AIAnalysisResult):
             layers = it.get("source_layers", "-")
             suppressed_lines.append(f"· {it.get('topic', '')}（{layers}）{flag}")
     if suppressed_lines:
-        blocks.append(("⑤ 已抑制 · 未达异常阈值", "\n".join(suppressed_lines)))
+        blocks.append(("5. 已抑制：未达异常阈值", "\n".join(suppressed_lines)))
 
     # 4. 方法说明
     if result.method_note:
@@ -327,8 +327,8 @@ def _render_env_suppressed_html(result: AIAnalysisResult) -> str:
         for text, tag in suppressed
     )
     return f"""
-                        <section class="env-section-group env-section-muted" data-export-title="⑤ 已抑制 · 未达异常阈值">
-                            <div class="env-section-heading">⑤ 已抑制 · 未达异常阈值</div>
+                        <section class="env-section-group env-section-muted" data-export-title="5. 已抑制：未达异常阈值">
+                            <div class="env-section-heading">5. 已抑制：未达异常阈值</div>
                             <ul class="env-suppressed-list">{rows}
                             </ul>
                         </section>"""
@@ -338,8 +338,7 @@ def _render_env_html_rich(result: AIAnalysisResult) -> str:
     ai_html = """
                 <div class="ai-section env-report">
                     <div class="ai-section-header">
-                        <div class="ai-section-title">🛰 信息环境异常监测日报</div>
-                        <span class="ai-section-badge">监测</span>
+                        <div class="ai-section-title">信息环境异常监测日报</div>
                     </div>
                     <div class="env-report-layout">"""
     ai_html += _render_env_overview_html(result)
@@ -376,13 +375,13 @@ def render_ai_analysis_markdown(result: AIAnalysisResult) -> str:
     """渲染为通用 Markdown 格式（Telegram、企业微信、ntfy、Bark、Slack）"""
     if not result.success:
         if result.skipped:
-            return f"ℹ️ {result.error}"
-        return f"⚠️ AI 分析失败: {result.error}"
+            return f"提示：{result.error}"
+        return f"AI 分析失败：{result.error}"
 
     if getattr(result, "report_style", "classic") == "environment":
         return _render_env_simple(result, "**", "**", ENV_TITLE)
 
-    lines = ["**✨ AI 热点分析**", ""]
+    lines = ["**AI 热点分析**", ""]
 
     if result.core_trends:
         lines.extend(["**核心热点态势**", _format_list_content(result.core_trends), ""])
@@ -417,13 +416,13 @@ def render_ai_analysis_feishu(result: AIAnalysisResult) -> str:
     """渲染为飞书卡片 Markdown 格式"""
     if not result.success:
         if result.skipped:
-            return f"ℹ️ {result.error}"
-        return f"⚠️ AI 分析失败: {result.error}"
+            return f"提示：{result.error}"
+        return f"AI 分析失败：{result.error}"
 
     if getattr(result, "report_style", "classic") == "environment":
         return _render_env_simple(result, "**", "**", ENV_TITLE)
 
-    lines = ["**✨ AI 热点分析**", ""]
+    lines = ["**AI 热点分析**", ""]
 
     if result.core_trends:
         lines.extend(["**核心热点态势**", _format_list_content(result.core_trends), ""])
@@ -458,13 +457,13 @@ def render_ai_analysis_dingtalk(result: AIAnalysisResult) -> str:
     """渲染为钉钉 Markdown 格式"""
     if not result.success:
         if result.skipped:
-            return f"ℹ️ {result.error}"
-        return f"⚠️ AI 分析失败: {result.error}"
+            return f"提示：{result.error}"
+        return f"AI 分析失败：{result.error}"
 
     if getattr(result, "report_style", "classic") == "environment":
         return _render_env_dingtalk(result)
 
-    lines = ["### ✨ AI 热点分析", ""]
+    lines = ["### AI 热点分析", ""]
 
     if result.core_trends:
         lines.extend(
@@ -511,7 +510,7 @@ def render_ai_analysis_plain(result: AIAnalysisResult) -> str:
     if getattr(result, "report_style", "classic") == "environment":
         return _render_env_plain(result)
 
-    lines = ["【✨ AI 热点分析】", ""]
+    lines = ["【AI 热点分析】", ""]
 
     if result.core_trends:
         lines.extend(["[核心热点态势]", _format_list_content(result.core_trends), ""])
@@ -547,13 +546,13 @@ def render_ai_analysis_telegram(result: AIAnalysisResult) -> str:
     """
     if not result.success:
         if result.skipped:
-            return f"ℹ️ {_escape_html(result.error)}"
-        return f"⚠️ AI 分析失败: {_escape_html(result.error)}"
+            return f"提示：{_escape_html(result.error)}"
+        return f"AI 分析失败：{_escape_html(result.error)}"
 
     if getattr(result, "report_style", "classic") == "environment":
         return _render_env_telegram(result)
 
-    lines = ["<b>✨ AI 热点分析</b>", ""]
+    lines = ["<b>AI 热点分析</b>", ""]
 
     if result.core_trends:
         lines.extend(["<b>核心热点态势</b>", _escape_html(_format_list_content(result.core_trends)), ""])
@@ -603,7 +602,7 @@ def render_ai_analysis_html_rich(result: AIAnalysisResult) -> str:
         if result.skipped:
             return f"""
                 <div class="ai-section">
-                    <div class="ai-info">ℹ️ {_escape_html(str(result.error))}</div>
+                    <div class="ai-info">提示：{_escape_html(str(result.error))}</div>
                 </div>"""
         error_msg = result.error or "未知错误"
         return f"""
@@ -617,7 +616,7 @@ def render_ai_analysis_html_rich(result: AIAnalysisResult) -> str:
     ai_html = """
                 <div class="ai-section">
                     <div class="ai-section-header">
-                        <div class="ai-section-title">✨ AI 热点分析</div>
+                        <div class="ai-section-title">AI 热点分析</div>
                         <span class="ai-section-badge">AI</span>
                     </div>
                     <div class="ai-blocks-grid">"""

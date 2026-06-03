@@ -863,9 +863,9 @@ def render_html_content(
 
             .env-report {
                 background: #ffffff;
-                border-color: #bfdbfe;
+                border-color: #e5e7eb;
                 border-radius: 8px;
-                padding: 28px 30px;
+                padding: 30px 34px;
             }
 
             .env-report .ai-section-header {
@@ -877,6 +877,7 @@ def render_html_content(
             .env-report .ai-section-title {
                 color: #0f172a;
                 letter-spacing: 0;
+                font-size: 20px;
             }
 
             .env-report-layout {
@@ -914,16 +915,26 @@ def render_html_content(
 
             .env-radar-grid {
                 display: grid;
-                grid-template-columns: repeat(4, minmax(0, 1fr));
-                gap: 10px;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 0;
+                border-top: 1px solid #e5e7eb;
+                border-bottom: 1px solid #e5e7eb;
             }
 
             .env-metric {
                 min-width: 0;
-                padding: 12px 14px;
-                background: #f8fafc;
-                border: 1px solid #e2e8f0;
-                border-radius: 8px;
+                padding: 12px 14px 12px 0;
+                border-top: 1px solid #e5e7eb;
+            }
+
+            .env-metric:nth-child(1),
+            .env-metric:nth-child(2) {
+                border-top: 0;
+            }
+
+            .env-metric:nth-child(even) {
+                padding-left: 18px;
+                border-left: 1px solid #e5e7eb;
             }
 
             .env-metric-label {
@@ -981,15 +992,12 @@ def render_html_content(
             .env-status-badge {
                 flex: 0 0 auto;
                 max-width: 180px;
-                padding: 3px 8px;
-                background: #e0f2fe;
-                border: 1px solid #bae6fd;
-                border-radius: 999px;
-                color: #0369a1;
+                padding-top: 2px;
+                color: #075985;
                 font-size: 12px;
                 font-weight: 700;
                 line-height: 1.35;
-                text-align: center;
+                text-align: right;
             }
 
             .env-item-summary,
@@ -1014,7 +1022,7 @@ def render_html_content(
             .env-meta {
                 display: flex;
                 flex-wrap: wrap;
-                gap: 6px;
+                gap: 4px 10px;
                 margin-top: 10px;
             }
 
@@ -1022,40 +1030,30 @@ def render_html_content(
                 display: inline-flex;
                 align-items: center;
                 max-width: 100%;
-                min-height: 24px;
-                padding: 3px 8px;
-                background: #f1f5f9;
-                border: 1px solid #e2e8f0;
-                border-radius: 999px;
-                color: #334155;
+                color: #475569;
                 font-size: 12px;
-                font-weight: 600;
                 line-height: 1.35;
             }
 
             .env-chip-label {
                 color: #64748b;
                 margin-right: 4px;
+                font-weight: 600;
             }
 
             .env-chip-heat {
-                background: #fff7ed;
-                border-color: #fed7aa;
                 color: #9a3412;
             }
 
             .env-chip-sentiment {
-                background: #fdf2f8;
-                border-color: #fbcfe8;
                 color: #9d174d;
+                font-weight: 600;
             }
 
             .env-risk {
                 margin-top: 10px;
-                padding: 10px 12px;
-                background: #fffbeb;
+                padding: 8px 0 8px 12px;
                 border-left: 3px solid #f59e0b;
-                border-radius: 6px;
                 color: #78350f;
                 font-size: 13px;
                 line-height: 1.65;
@@ -1084,10 +1082,6 @@ def render_html_content(
 
             .env-suppressed-tag {
                 flex: 0 0 auto;
-                padding: 1px 6px;
-                background: #f8fafc;
-                border: 1px solid #e2e8f0;
-                border-radius: 999px;
                 color: #64748b;
                 font-size: 12px;
                 font-weight: 700;
@@ -1103,6 +1097,14 @@ def render_html_content(
             @media (max-width: 480px) {
                 .env-report { padding: 20px; }
                 .env-radar-grid { grid-template-columns: 1fr; }
+                .env-metric,
+                .env-metric:nth-child(even) {
+                    padding-left: 0;
+                    border-left: 0;
+                }
+                .env-metric:nth-child(2) {
+                    border-top: 1px solid #e5e7eb;
+                }
                 .env-item-topline {
                     display: grid;
                     gap: 8px;
@@ -1110,6 +1112,7 @@ def render_html_content(
                 .env-status-badge {
                     max-width: 100%;
                     width: fit-content;
+                    text-align: left;
                 }
             }
 
@@ -1168,7 +1171,7 @@ def render_html_content(
             }
 
             body.wide-mode .env-radar-grid {
-                grid-template-columns: repeat(4, minmax(0, 1fr));
+                grid-template-columns: repeat(2, minmax(0, 1fr));
             }
 
             /* 宽屏模式 - 新增热点多列 */
@@ -1590,7 +1593,6 @@ def render_html_content(
             body.dark-mode .env-metric,
             body.dark-mode .env-chip,
             body.dark-mode .env-suppressed-tag {
-                background: #111827;
                 border-color: #334155;
                 color: #cbd5e1;
             }
@@ -1602,22 +1604,15 @@ def render_html_content(
                 color: #94a3b8;
             }
             body.dark-mode .env-status-badge {
-                background: #0c4a6e;
-                border-color: #0369a1;
                 color: #bae6fd;
             }
             body.dark-mode .env-chip-heat {
-                background: #431407;
-                border-color: #9a3412;
                 color: #fed7aa;
             }
             body.dark-mode .env-chip-sentiment {
-                background: #500724;
-                border-color: #9d174d;
                 color: #fbcfe8;
             }
             body.dark-mode .env-risk {
-                background: #422006;
                 border-left-color: #f59e0b;
                 color: #fcd34d;
             }
@@ -1884,7 +1879,7 @@ def render_html_content(
     if report_data["failed_ids"]:
         html += """
                 <div class="error-section">
-                    <div class="error-title">⚠️ 请求失败的平台</div>
+                    <div class="error-title">请求失败的平台</div>
                     <ul class="error-list">"""
         for id_value in report_data["failed_ids"]:
             html += f'<li class="error-item">{html_escape(id_value)}</li>'

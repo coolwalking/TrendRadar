@@ -124,6 +124,12 @@ class TestEnvironmentRendering(unittest.TestCase):
         self.assertIn("高热待核实", out)
         self.assertIn("跨层有呼应", out)
 
+    def test_environment_rendering_avoids_decorative_symbols(self):
+        for name in ALL_RENDERERS:
+            out = getattr(FMT, name)(self.result)
+            for symbol in ["🛰", "✨", "⚠️", "ℹ️", "▸", "①", "②", "③", "④", "⑤"]:
+                self.assertNotIn(symbol, out, f"{name} 含装饰符号 {symbol}")
+
     def test_router_returns_callable_per_channel(self):
         for ch in ["feishu", "dingtalk", "wework", "telegram", "ntfy", "bark", "slack", "email"]:
             fn = FMT.get_ai_analysis_renderer(ch)
