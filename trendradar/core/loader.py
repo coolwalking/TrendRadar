@@ -171,6 +171,34 @@ def _load_timeline_data(config_dir: str = "config") -> Dict:
     return data or {}
 
 
+def _load_source_tiers_data(config_dir: str = "config") -> Dict:
+    """
+    加载 source_tiers.yaml（来源分层配置）
+
+    用于"信息环境异常监测"：定义平台 / RSS feed 的证据层级（A/B/C/D）。
+    这是 source-level 的证据解释标签，不是事实真伪判断。
+
+    Args:
+        config_dir: 配置目录路径
+
+    Returns:
+        source_tiers.yaml 的完整数据；找不到时返回空模板（不报错，全部按 unknown 处理）
+    """
+    tiers_path = Path(config_dir) / "source_tiers.yaml"
+    if not tiers_path.exists():
+        print(f"[来源分层] source_tiers.yaml 未找到: {tiers_path}，所有来源按 unknown 处理")
+        return {"tiers": {}, "platforms": {}, "rss_feeds": {}}
+
+    try:
+        with open(tiers_path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        print(f"[来源分层] source_tiers.yaml 加载成功: {tiers_path}")
+        return data or {"tiers": {}, "platforms": {}, "rss_feeds": {}}
+    except Exception as e:
+        print(f"[来源分层] source_tiers.yaml 解析失败 ({e})，所有来源按 unknown 处理")
+        return {"tiers": {}, "platforms": {}, "rss_feeds": {}}
+
+
 def _load_weight_config(config_data: Dict) -> Dict:
     """加载权重配置"""
     advanced = config_data.get("advanced", {})
@@ -293,6 +321,11 @@ def _load_ai_analysis_config(config_data: Dict) -> Dict:
         "ENABLED": enabled_env if enabled_env is not None else ai_config.get("enabled", False),
         "LANGUAGE": ai_config.get("language", "Chinese"),
         "PROMPT_FILE": ai_config.get("prompt_file", "ai_analysis_prompt.txt"),
+        # 报告风格：environment=信息环境异常监测日报（默认） / classic=旧版热点分析
+        "REPORT_STYLE": ai_config.get("report_style", "environment"),
+        "ENVIRONMENT_PROMPT_FILE": ai_config.get(
+            "environment_prompt_file", "ai_environment_report_prompt.txt"
+        ),
         "MODE": ai_config.get("mode", "follow_report"),
         "MAX_NEWS_FOR_ANALYSIS": ai_config.get("max_news_for_analysis", 50),
         "INCLUDE_RSS": ai_config.get("include_rss", True),
@@ -569,6 +602,11 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
     # 统一调度配置
     config["SCHEDULE"] = _load_schedule_config(config_data)
     config["_TIMELINE_DATA"] = _load_timeline_data(
+        str(Path(config_path).parent) if config_path else "config"
+    )
+
+    # 来源分层配置（信息环境异常监测）
+    config["_SOURCE_TIERS"] = _load_source_tiers_data(
         str(Path(config_path).parent) if config_path else "config"
     )
 

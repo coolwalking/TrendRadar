@@ -75,8 +75,17 @@ class AppContext:
         self.config = config
         self._storage_manager = None
         self._scheduler = None
+        self._source_tier_resolver = None
 
     # === 配置访问 ===
+
+    @property
+    def source_tier_resolver(self):
+        """获取来源分层解析器（信息环境异常监测用，懒加载缓存）"""
+        if self._source_tier_resolver is None:
+            from trendradar.core.source_tiers import build_source_tier_resolver
+            self._source_tier_resolver = build_source_tier_resolver(self.config)
+        return self._source_tier_resolver
 
     @property
     def timezone(self) -> str:
