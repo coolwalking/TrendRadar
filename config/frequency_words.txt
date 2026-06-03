@@ -150,6 +150,40 @@
 [WORD_GROUPS]
 
 # ═══════════════════════════════════════════════════════════════
+#                    国际媒体与 AI 影响观察
+# ═══════════════════════════════════════════════════════════════
+
+[国际秩序与地缘政治]
+/geopolitics|foreign policy|diplomacy|sanctions|tariff|trade war|supply chain|NATO|Ukraine|Russia|Middle East|Israel|Gaza|Iran|Taiwan|China|US-China|Europe|EU/ => 国际秩序与地缘政治
+/地缘|外交|制裁|关税|贸易战|供应链|北约|乌克兰|俄罗斯|中东|以色列|加沙|伊朗|台湾|中美|欧洲|欧盟/ => 国际秩序与地缘政治
+@20
+
+[全球经济与金融]
+/global economy|inflation|interest rates|central bank|Federal Reserve|Fed|ECB|BOJ|recession|productivity|labor market|jobs report|bond yields|oil prices|commodity|equity market|Wall Street/ => 全球经济与金融
+/全球经济|通胀|利率|央行|美联储|欧央行|日本央行|衰退|生产率|劳动力市场|就业|债券收益率|油价|大宗商品|美股|华尔街/ => 全球经济与金融
+@20
+
+[AI 前沿模型与产品]
+/OpenAI|ChatGPT|Sora|GPT|Anthropic|Claude|Google DeepMind|DeepMind|Gemini|Google AI|frontier model|foundation model|large language model|LLM|agentic|AI agent|multimodal|reasoning model/ => AI 前沿模型与产品
+/大模型|基础模型|前沿模型|多模态|推理模型|智能体|AI Agent|模型能力|模型发布|模型评测|模型安全/ => AI 前沿模型与产品
+@20
+
+[AI 技术研究与安全治理]
+/AI safety|alignment|interpretability|evals|benchmark|red team|frontier safety|responsible AI|AI governance|model behavior|jailbreak|misuse|biosecurity|cybersecurity/ => AI 技术研究与安全治理
+/AI安全|对齐|可解释性|评测|基准测试|红队|负责任AI|AI治理|模型行为|越狱|滥用|生物安全|网络安全/ => AI 技术研究与安全治理
+@20
+
+[AI 经济与劳动影响]
+/AI adoption|automation|labor|workforce|productivity|wages|white-collar|jobs|employment|economic impact|economic index|enterprise AI|AI spending|return on investment|ROI/ => AI 经济与劳动影响
+/AI采用|自动化|就业|岗位|白领|劳动力|生产率|工资|经济影响|企业AI|AI投入|投资回报|ROI|降本增效/ => AI 经济与劳动影响
+@20
+
+[AI 社会人文与教育应用]
+/education|learning|teacher|student|university|humanities|social science|creative work|copyright|media|journalism|culture|mental health|healthcare|public sector|public services/ => AI 社会人文与教育应用
+/教育|学习|教师|学生|大学|高校|人文|社科|创作|版权|媒体|新闻业|文化|心理健康|医疗|公共部门|公共服务/ => AI 社会人文与教育应用
+@20
+
+# ═══════════════════════════════════════════════════════════════
 #                         企业与品牌
 # ═══════════════════════════════════════════════════════════════
 

@@ -40,8 +40,8 @@ app:
 # 详细时间线图请查看 config/timeline.yaml
 # ===============================================================
 schedule:
-  enabled: false                        # 是否启用调度系统（true=启用, false=关闭，默认关闭）
-  preset: "morning_evening"             # 预设模板名称（见上方说明）
+  enabled: true                         # 是否启用调度系统（true=启用, false=关闭，默认关闭）
+  preset: "custom"                      # 预设模板名称（见上方说明）
 
 
 # ===============================================================
@@ -140,6 +140,84 @@ rss:
     - id: "yahoo-finance"
       name: "雅虎财经"
       url: "https://finance.yahoo.com/news/rssindex"
+
+    # 国际媒体 - 综合/国际政治/经济
+    - id: "reuters-via-google-news"
+      name: "Reuters via Google News"
+      url: "https://news.google.com/rss/search?q=site%3Areuters.com&hl=en-US&gl=US&ceid=US:en"
+
+    - id: "ap-via-google-news"
+      name: "AP via Google News"
+      url: "https://news.google.com/rss/search?q=site%3Aapnews.com&hl=en-US&gl=US&ceid=US:en"
+
+    - id: "bbc-world"
+      name: "BBC World"
+      url: "https://feeds.bbci.co.uk/news/world/rss.xml"
+
+    - id: "guardian-world"
+      name: "The Guardian World"
+      url: "https://www.theguardian.com/world/rss"
+
+    - id: "washingtonpost-world"
+      name: "Washington Post World"
+      url: "https://feeds.washingtonpost.com/rss/world"
+
+    - id: "washingtonpost-technology"
+      name: "Washington Post Technology"
+      url: "https://feeds.washingtonpost.com/rss/business/technology"
+
+    - id: "nyt-world"
+      name: "New York Times World"
+      url: "https://rss.nytimes.com/services/xml/rss/nyt/World.xml"
+
+    - id: "nyt-business"
+      name: "New York Times Business"
+      url: "https://rss.nytimes.com/services/xml/rss/nyt/Business.xml"
+
+    - id: "nyt-technology"
+      name: "New York Times Technology"
+      url: "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml"
+
+    - id: "nyt-ai"
+      name: "New York Times AI"
+      url: "https://www.nytimes.com/svc/collections/v1/publish/www.nytimes.com/spotlight/artificial-intelligence/rss.xml"
+      max_age_days: 7
+
+    # AI 公司/研究机构 - 官方源优先；无官方 RSS 时使用 OpenRSS 生成源
+    - id: "openai-news"
+      name: "OpenAI News"
+      url: "https://openai.com/news/rss.xml"
+      max_age_days: 7
+
+    - id: "openai-developers"
+      name: "OpenAI Developers"
+      url: "https://developers.openai.com/rss.xml"
+      max_age_days: 7
+
+    - id: "anthropic-news-openrss"
+      name: "Anthropic News via OpenRSS"
+      url: "https://openrss.org/www.anthropic.com/news/rss.xml"
+      max_age_days: 7
+
+    - id: "anthropic-research-openrss"
+      name: "Anthropic Research via OpenRSS"
+      url: "https://openrss.org/www.anthropic.com/research/rss.xml"
+      max_age_days: 7
+
+    - id: "google-ai-blog"
+      name: "Google AI Blog"
+      url: "https://blog.google/innovation-and-ai/technology/ai/rss/"
+      max_age_days: 7
+
+    - id: "google-research-blog"
+      name: "Google Research Blog"
+      url: "https://blog.research.google/feeds/posts/default"
+      max_age_days: 7
+
+    - id: "google-deepmind-blog"
+      name: "Google DeepMind Blog"
+      url: "https://deepmind.google/blog/rss.xml"
+      max_age_days: 7
 
     # 自定义源示例
     # - id: "custom-feed"
@@ -421,10 +499,10 @@ ai_analysis:
                                     # follow_report = 跟随 report.mode（默认）
                                     # daily / current / incremental = 强制使用指定模式
 
-  max_news_for_analysis: 150        # 参与分析的新闻数量上限（控制 token 成本的关键项）
+  max_news_for_analysis: 200        # 参与分析的新闻数量上限（控制 token 成本的关键项）
                                     # 热榜优先占用配额，RSS 用剩余配额，独立展示区不受此限制
 
-  include_rss: false                # 是否包含 RSS 内容进行分析（true=包含, false=不包含）
+  include_rss: true                 # 是否包含 RSS 内容进行分析（true=包含, false=不包含）
   include_standalone: true          # 是否纳入独立展示区数据（true=纳入, false=不纳入）
 
   include_rank_timeline: true       # 排名时间线详细程度
@@ -440,7 +518,7 @@ ai_analysis:
 # 对推送标题进行翻译，不包含 AI 分析的内容
 # ===============================================================
 ai_translation:
-  enabled: true                     # 是否启用翻译功能（true=启用, false=关闭）
+  enabled: false                    # 是否启用翻译功能（true=启用, false=关闭）
   language: "中文"                   # 翻译目标语言（如 "English", "Korean", "法语"）
   prompt_file: "ai_translation_prompt.txt"   # 提示词文件（相对于 config 目录）
 
