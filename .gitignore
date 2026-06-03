@@ -1,0 +1,19 @@
+# Runtime output
+output/
+logs/
+
+# Local environment and secrets
+.env
+*.env
+docker/.env
+
+# Python cache and test artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+
+# System and editor noise
+.DS_Store
+.vscode/
+.idea/
