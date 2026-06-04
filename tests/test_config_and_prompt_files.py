@@ -139,6 +139,22 @@ class TestAlertConfigLoader(unittest.TestCase):
         self.assertEqual(zero["STATE_TTL_DAYS"], 0)
         self.assertEqual(negative["STATE_TTL_DAYS"], 0)
 
+    def test_cooldown_minutes_default_is_180(self):
+        cfg = self.loader._load_alert_config({})
+        self.assertEqual(cfg["COOLDOWN_MINUTES"], 180)
+
+    def test_cooldown_minutes_positive_integer_loaded(self):
+        cfg = self.loader._load_alert_config({"alert": {"cooldown_minutes": 60}})
+        self.assertEqual(cfg["COOLDOWN_MINUTES"], 60)
+
+    def test_cooldown_minutes_invalid_falls_back_to_180(self):
+        cfg = self.loader._load_alert_config({"alert": {"cooldown_minutes": "bad"}})
+        self.assertEqual(cfg["COOLDOWN_MINUTES"], 180)
+
+    def test_cooldown_minutes_negative_disables(self):
+        cfg = self.loader._load_alert_config({"alert": {"cooldown_minutes": -5}})
+        self.assertEqual(cfg["COOLDOWN_MINUTES"], 0)
+
 
 class TestMainPipelineSource(unittest.TestCase):
     def test_ai_analysis_runs_when_only_rss_has_content(self):

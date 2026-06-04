@@ -379,5 +379,116 @@ class TestAlertStateStore(unittest.TestCase):
         self.assertEqual(rec["pushed_count"], 1)
 
 
+class TestAlertStateStoreDefaults(unittest.TestCase):
+    """AlertStateStore 构造函数默认值与非法值回退测试。"""
+
+    def test_default_state_ttl_days_is_14(self):
+        store = AS.AlertStateStore()
+        self.assertEqual(store._state_ttl_days, 14)
+
+    def test_default_cooldown_minutes_is_180(self):
+        store = AS.AlertStateStore()
+        self.assertEqual(store._cooldown_minutes, 180)
+
+    def test_invalid_state_ttl_days_falls_back_to_14(self):
+        store = AS.AlertStateStore(state_ttl_days="bad")
+        self.assertEqual(store._state_ttl_days, 14)
+
+    def test_invalid_cooldown_minutes_falls_back_to_180(self):
+        store = AS.AlertStateStore(cooldown_minutes="bad")
+        self.assertEqual(store._cooldown_minutes, 180)
+
+    def test_state_ttl_days_zero_disables(self):
+        store = AS.AlertStateStore(state_ttl_days=0)
+        self.assertEqual(store._state_ttl_days, 0)
+
+    def test_state_ttl_days_negative_disables(self):
+        store = AS.AlertStateStore(state_ttl_days=-5)
+        self.assertEqual(store._state_ttl_days, 0)
+
+    def test_cooldown_minutes_zero_disables(self):
+        store = AS.AlertStateStore(cooldown_minutes=0)
+        self.assertEqual(store._cooldown_minutes, 0)
+
+    def test_cooldown_minutes_negative_disables(self):
+        store = AS.AlertStateStore(cooldown_minutes=-5)
+        self.assertEqual(store._cooldown_minutes, 0)
+
+    def test_none_state_ttl_days_falls_back_to_14(self):
+        store = AS.AlertStateStore(state_ttl_days=None)
+        self.assertEqual(store._state_ttl_days, 14)
+
+    def test_none_cooldown_minutes_falls_back_to_180(self):
+        store = AS.AlertStateStore(cooldown_minutes=None)
+        self.assertEqual(store._cooldown_minutes, 180)
+
+
+class TestToUtcNaive(unittest.TestCase):
+    """_to_utc_naive helper 行为测试。"""
+
+    def test_naive_passthrough(self):
+        dt = datetime.datetime(2026, 6, 4, 8, 0, 0)
+        self.assertEqual(AS._to_utc_naive(dt), dt)
+        self.assertIsNone(AS._to_utc_naive(dt).tzinfo)
+
+    def test_aware_utc_converted(self):
+        import datetime as _dt
+        utc_dt = _dt.datetime(2026, 6, 4, 8, 0, 0, tzinfo=_dt.timezone.utc)
+        result = AS._to_utc_naive(utc_dt)
+        self.assertEqual(result, _dt.datetime(2026, 6, 4, 8, 0, 0))
+        self.assertIsNone(result.tzinfo)
+
+    def test_aware_non_utc_converted_to_utc(self):
+        import datetime as _dt
+        shanghai = _dt.timezone(_dt.timedelta(hours=8))
+        local_dt = _dt.datetime(2026, 6, 4, 16, 0, 0, tzinfo=shanghai)  # UTC+8 16:00
+        result = AS._to_utc_naive(local_dt)
+        self.assertEqual(result, _dt.datetime(2026, 6, 4, 8, 0, 0))  # UTC 08:00
+        self.assertIsNone(result.tzinfo)
+
+    def test_none_returns_none(self):
+        self.assertIsNone(AS._to_utc_naive(None))
+
+
+class TestPruneExpiredWithAwareDatetime(unittest.TestCase):
+    """_prune_expired 使用 aware now 时不应误判过期。"""
+
+    def test_aware_now_does_not_prematurely_prune(self):
+        import datetime as _dt
+        saved = {}
+        shanghai = _dt.timezone(_dt.timedelta(hours=8))
+
+        # topic 在 naive T0 推送，TTL=14 天
+        # aware_now = T0 + 13 天（UTC+8），转 UTC naive 后仍在 TTL 内
+        fresh = item("近期议题")
+        naive_pushed = T0  # 2026-06-04 08:00:00
+        aware_now = _dt.datetime(2026, 6, 17, 16, 0, 0, tzinfo=shanghai)  # +13d, UTC+8
+
+        backend_data = {
+            "topics": {
+                AS.topic_key("近期议题"): state_from(
+                    "cross_layer_verified",
+                    fresh,
+                    naive_pushed,
+                ),
+            },
+        }
+
+        class FakeBackend:
+            def get_alert_state(self):
+                return dict(backend_data)
+
+            def save_alert_state(self, data):
+                saved.update(data)
+                return True
+
+        store = AS.AlertStateStore(
+            backend=FakeBackend(), state_ttl_days=14, cooldown_minutes=180,
+        )
+        store.commit([], aware_now)
+
+        self.assertIn(AS.topic_key("近期议题"), saved["topics"])
+
+
 if __name__ == "__main__":
     unittest.main()
