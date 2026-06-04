@@ -11,6 +11,22 @@ from pathlib import Path
 from typing import Dict, List, Optional, Callable
 
 
+# output/index.html 跳转页：指向发布根 public/（current 盘面为默认落地）。
+# 静态、幂等，不含完整报告内容，避免被任意 mode 覆盖成"最后一次跑的模式"。
+_OUTPUT_INDEX_REDIRECT_HTML = """<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="refresh" content="0; url=public/index.html">
+<meta name="robots" content="noindex, nofollow">
+<title>TrendRadar</title>
+</head>
+<body>
+<p>正在跳转到 <a href="public/index.html">TrendRadar 盘面</a> …</p>
+</body>
+</html>"""
+
+
 def prepare_report_data(
     stats: List[Dict],
     failed_ids: Optional[List] = None,
@@ -219,22 +235,27 @@ def generate_html_report(
     with open(snapshot_file, "w", encoding="utf-8") as f:
         f.write(html_content)
 
-    # 2. 复制到 html/latest/{mode}.html（最新报告）
+    # 2. 复制到 html/latest/{mode}.html（最新报告，向后兼容保留）
     latest_dir = Path(output_dir) / "html" / "latest"
     latest_dir.mkdir(parents=True, exist_ok=True)
     latest_file = latest_dir / f"{mode}.html"
     with open(latest_file, "w", encoding="utf-8") as f:
         f.write(html_content)
 
-    # 3. 复制到 index.html（入口）
-    # output/index.html（供 Docker Volume 挂载访问）
-    output_index = Path(output_dir) / "index.html"
-    with open(output_index, "w", encoding="utf-8") as f:
+    # 3. 写发布根的完整报告：output/public/{group}/full.html
+    #    这是 full.html 的**唯一写入点**（dashboard 不写 full.html）。
+    #    current/incremental → current；daily → daily。
+    group = "daily" if mode == "daily" else "current"
+    full_dir = Path(output_dir) / "public" / group
+    full_dir.mkdir(parents=True, exist_ok=True)
+    with open(full_dir / "full.html", "w", encoding="utf-8") as f:
         f.write(html_content)
 
-    # 根目录 index.html（供 GitHub Pages 访问）
-    root_index = Path("index.html")
-    with open(root_index, "w", encoding="utf-8") as f:
-        f.write(html_content)
+    # 4. output/index.html 改为指向 public/ 的轻量跳转页（不再被完整报告覆盖）。
+    #    真正入口由 generate_dashboard 写到 output/public/index.html。
+    #    注意：不再写仓库根 index.html（保留该文件，但不自动覆盖）。
+    output_index = Path(output_dir) / "index.html"
+    with open(output_index, "w", encoding="utf-8") as f:
+        f.write(_OUTPUT_INDEX_REDIRECT_HTML)
 
     return snapshot_file
