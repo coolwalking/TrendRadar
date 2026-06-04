@@ -511,6 +511,7 @@ class AppContext:
             split_content_func=self.split_content,
             translator=translator,
             storage_backend=self.get_storage_manager(),
+            attachment_output_dir="output",
         )
 
     def create_scheduler(self) -> Scheduler:

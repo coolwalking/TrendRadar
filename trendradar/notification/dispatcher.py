@@ -23,6 +23,8 @@ from trendradar.core.config import (
 from trendradar.telegram_bot.access import build_telegram_access_config
 
 from .senders import (
+    resolve_report_attachment_path,
+    send_telegram_document,
     send_to_bark,
     send_to_dingtalk,
     send_to_email,
@@ -50,6 +52,19 @@ class _DeferredAlertStateStore:
 
     def get(self, key: str):
         return self._store.get(key)
+
+    def has_pending(self) -> bool:
+        """本轮 fanout 是否已有 receiver 真的推送了 alert items（尚未 flush 清算前的事实源）。
+
+        语义精确说明（供附件 gate 复用）：返回 True 当且仅当至少有一个 receiver
+        调用过 commit()，而 commit() 仅在 senders.send_to_telegram 成功 POST 异常提醒后
+        才被调用、且 pushed_items 非空。因此 True == 「至少一个 receiver 收到了带 item 的
+        异常提醒消息」——这正是附件 gate 想要的判定。
+        这里**不**反映 flush() 去重后最终持久化的 topic 数量（topic_key 为空串等边界会被
+        dedupe 跳过）：附件是否发送只取决于「用户是否真的收到了 alert」，与 cooldown 落盘
+        的 topic 计数无关，故二者刻意解耦。
+        """
+        return bool(self._pending)
 
     def commit(self, pushed_items: List, now) -> bool:
         if pushed_items:
@@ -96,6 +111,7 @@ class NotificationDispatcher:
         split_content_func: Callable,
         translator: Optional["AITranslator"] = None,
         storage_backend: Any = None,
+        attachment_output_dir: str = "output",
     ):
         """
         初始化通知调度器
@@ -106,6 +122,8 @@ class NotificationDispatcher:
             split_content_func: 内容分批函数
             translator: AI 翻译器实例（可选）
             storage_backend: 存储后端（可选，用于 environment 实时提醒的 cooldown 状态持久化）
+            attachment_output_dir: 发布根所在的输出目录（用于解析 public/{group}/full.html 附件路径），
+                与 generate_html_report 的 output_dir 保持一致；可在测试中覆盖
         """
         self.config = config
         self.get_time_func = get_time_func
@@ -113,6 +131,7 @@ class NotificationDispatcher:
         self.max_accounts = config.get("MAX_ACCOUNTS_PER_CHANNEL", 3)
         self.translator = translator
         self.storage_backend = storage_backend
+        self.attachment_output_dir = attachment_output_dir
 
     def _telegram_access_config(self) -> Dict[str, Any]:
         access = self.config.get("TELEGRAM_ACCESS")
@@ -661,6 +680,8 @@ class NotificationDispatcher:
 
         deferred_store = _DeferredAlertStateStore(alert_state_store) if alert_state_store else None
         results = []
+        # 记录每个 target 的文本是否成功，供附件 fanout「仅对文本成功的 receiver 附 HTML」使用
+        text_ok_targets: List[Tuple[str, str, bool]] = []
         for i, (token, chat_id) in enumerate(targets):
             if token and chat_id:
                 account_label = f"接收者{i+1}" if len(targets) > 1 else ""
@@ -687,6 +708,13 @@ class NotificationDispatcher:
                     alert_config=alert_config,
                 )
                 results.append(result)
+                text_ok_targets.append((token, chat_id, bool(result)))
+
+        # 必须在 flush 前记录「本轮 realtime 是否真的推了 alert items」：
+        # flush 后 pending 语义不再可靠，会把冷却/静默成功误判为真实推送。
+        had_realtime_alert_items = (
+            deferred_store is not None and deferred_store.has_pending()
+        )
 
         any_success = any(results) if results else False
         if any_success and deferred_store is not None:
@@ -694,7 +722,95 @@ class NotificationDispatcher:
         if results and not all(results):
             failed_count = len([result for result in results if not result])
             print(f"Telegram {failed_count}/{len(results)} 个接收者发送失败，其它接收者已继续尝试")
+
+        # 附件 fanout（增强项，严格在 flush 之后；失败不影响文本结果 any_success）
+        self._maybe_send_telegram_attachments(
+            text_ok_targets=text_ok_targets,
+            mode=mode,
+            report_style=report_style,
+            report_type=report_type,
+            proxy_url=proxy_url,
+            had_realtime_alert_items=had_realtime_alert_items,
+        )
         return any_success
+
+    def _maybe_send_telegram_attachments(
+        self,
+        *,
+        text_ok_targets: List[Tuple[str, str, bool]],
+        mode: str,
+        report_style: str,
+        report_type: str,
+        proxy_url: Optional[str],
+        had_realtime_alert_items: bool,
+    ) -> None:
+        """文本推送成功后，可选地把 public/{group}/full.html 作为附件发给各 receiver。
+
+        - 仅 environment 风格触发（classic 一律不附附件）；
+        - realtime_alert：current/incremental 且本轮真的推了 alert（had_realtime_alert_items）；
+        - daily_digest ：environment 每日简报（mode==daily）；
+        - 仅对文本发送成功的 receiver 附 HTML；
+        - 任何附件失败都只记录日志，绝不改变文本推送结果，也绝不触碰 alert_state。
+        """
+        cfg = self.config.get("TELEGRAM_ATTACHMENTS") or {}
+        if not cfg.get("ENABLED"):
+            return
+
+        attach_on = set(cfg.get("ATTACH_ON") or [])
+        is_env = report_style == "environment"
+        eligible = False
+        if is_env and mode in ("current", "incremental"):
+            eligible = "realtime_alert" in attach_on and had_realtime_alert_items
+        elif is_env and mode == "daily":
+            eligible = "daily_digest" in attach_on
+        if not eligible:
+            return
+
+        path = resolve_report_attachment_path(
+            self.attachment_output_dir, mode, cfg.get("REPORT_KIND", "full")
+        )
+
+        group = "daily" if mode == "daily" else "current"
+        ts = ""
+        if self.get_time_func:
+            try:
+                ts = self.get_time_func().strftime("%Y%m%d-%H%M")
+            except Exception:
+                ts = ""
+        filename = f"trendradar-{group}{('-' + ts) if ts else ''}.html"
+
+        failure_behavior = cfg.get("FAILURE_BEHAVIOR", "warn")
+        max_file_mb = cfg.get("MAX_FILE_MB", 8)
+
+        ok = 0
+        fail = 0
+        for i, (token, chat_id, text_ok) in enumerate(text_ok_targets):
+            if not (token and chat_id and text_ok):
+                continue
+            label = f"Telegram接收者{i+1}" if len(text_ok_targets) > 1 else "Telegram"
+            sent = send_telegram_document(
+                token,
+                chat_id,
+                path,
+                filename=filename,
+                proxy_url=proxy_url,
+                max_file_mb=max_file_mb,
+                log_prefix=label,
+            )
+            if sent:
+                ok += 1
+            else:
+                fail += 1
+
+        if ok or fail:
+            summary = (
+                f"Telegram 附件：{ok} 成功 / {fail} 失败"
+                f"（共 {ok + fail} 个接收者）[{report_type}]"
+            )
+            if fail and failure_behavior != "silent":
+                print("⚠️ " + summary)
+            else:
+                print(summary)
 
     def _send_ntfy(
         self,

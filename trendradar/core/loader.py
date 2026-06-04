@@ -378,6 +378,54 @@ def _load_alert_config(config_data: Dict) -> Dict:
     }
 
 
+def _load_telegram_attachments_config(config_data: Dict) -> Dict:
+    """加载 Telegram HTML 报告附件配置（增强项，默认关闭）。
+
+    附件是文本推送成功后的可选增强：
+      - 附件失败**永远不会**影响文本推送结果（failure_behavior 只控制日志强度）；
+      - 第一版只发送发布根的 public/{current|daily}/full.html，
+        不发送 state.json / index.html / db / log / alert_state / secrets。
+
+    attach_on 取值（均要求 environment 风格，classic 一律不附附件）：
+      - realtime_alert：environment + current/incremental 且本轮真的推了 alert
+      - daily_digest ：environment + daily（每日简报）；指 environment 每日简报，
+        不是所有 mode=daily。
+    """
+    raw = config_data.get("telegram_attachments", {}) or {}
+
+    enabled_env = _get_env_bool("TELEGRAM_ATTACHMENTS_ENABLED")
+    enabled = enabled_env if enabled_env is not None else bool(raw.get("enabled", False))
+
+    attach_on_raw = raw.get("attach_on")
+    if not isinstance(attach_on_raw, (list, tuple)):
+        attach_on_raw = ["realtime_alert", "daily_digest"]
+    allowed = {"realtime_alert", "daily_digest"}
+    attach_on = [str(item).strip() for item in attach_on_raw if str(item).strip() in allowed]
+
+    report_kind = str(raw.get("report_kind", "full")).strip().lower()
+    if report_kind != "full":
+        # v1 仅支持 full（避免暴露 state.json/index.html）
+        report_kind = "full"
+
+    raw_max_mb = raw.get("max_file_mb", 8)
+    try:
+        max_file_mb = float(raw_max_mb)
+    except (ValueError, TypeError):
+        max_file_mb = 8.0
+
+    failure_behavior = str(raw.get("failure_behavior", "warn")).strip().lower()
+    if failure_behavior not in ("silent", "warn"):
+        failure_behavior = "warn"
+
+    return {
+        "ENABLED": enabled,
+        "ATTACH_ON": attach_on,
+        "REPORT_KIND": report_kind,
+        "MAX_FILE_MB": max_file_mb,
+        "FAILURE_BEHAVIOR": failure_behavior,
+    }
+
+
 def _load_ai_translation_config(config_data: Dict) -> Dict:
     """加载 AI 翻译配置（功能配置，模型配置见 _load_ai_config）"""
     trans_config = config_data.get("ai_translation", {})
@@ -738,6 +786,9 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
 
     # 实时异常提醒门控配置（cooldown / 去重 / 升级再推，仅作用于 environment 自动推送）
     config["ALERT"] = _load_alert_config(config_data)
+
+    # Telegram HTML 报告附件配置（增强项，默认关闭；失败不影响文本推送）
+    config["TELEGRAM_ATTACHMENTS"] = _load_telegram_attachments_config(config_data)
 
     # AI 智能筛选配置
     config["AI_FILTER"] = _load_ai_filter_config(config_data)

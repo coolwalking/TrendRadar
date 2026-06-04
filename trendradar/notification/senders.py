@@ -762,6 +762,108 @@ def send_to_telegram(
     return True
 
 
+def resolve_report_attachment_path(
+    output_dir: str, mode: str, report_kind: str = "full"
+) -> str:
+    """解析要作为 Telegram 附件发送的报告文件路径。
+
+    第一版**只**返回发布根的完整报告 public/{group}/full.html：
+      - current / incremental → public/current/full.html
+      - daily               → public/daily/full.html
+    （group 映射与 generator.py / dashboard.py 完全一致）
+
+    report_kind 当前仅支持 "full"；其它取值一律回落到 full.html。
+    本函数物理上只能拼出 full.html，绝不指向 state.json / index.html /
+    db / log / alert_state / secrets。
+    """
+    group = "daily" if mode == "daily" else "current"
+    filename = "full.html"  # v1：仅 full，不暴露 state.json/index.html
+    return str(Path(output_dir) / "public" / group / filename)
+
+
+def send_telegram_document(
+    bot_token: str,
+    chat_id: str,
+    document_path: str,
+    *,
+    filename: Optional[str] = None,
+    caption: Optional[str] = None,
+    proxy_url: Optional[str] = None,
+    max_file_mb: float = 8,
+    timeout: int = 60,
+    log_prefix: str = "Telegram",
+) -> bool:
+    """发送单个 document 附件到一个 chat（sendDocument）。
+
+    仅负责附件投递：不渲染文本、不分批、不读写 alert_state、不改文案。
+    所有失败（文件缺失 / 过大 / API / 网络）都返回 False 并打印日志，绝不抛出，
+    以保证调用方可以「附件失败不影响文本推送结果」。
+
+    Args:
+        bot_token: Telegram Bot Token
+        chat_id: 目标 chat id
+        document_path: 本地文件路径
+        filename: 展示给用户的文件名（如 trendradar-current.html）；None 时用真实文件名
+        caption: 可选说明文字（v1 不传，避免改文案）
+        proxy_url: 代理 URL（可选）
+        max_file_mb: 大小上限（MB）；<=0 表示不检查（仍受 Telegram 物理上限约束）
+        timeout: 请求超时（秒）
+        log_prefix: 日志前缀
+
+    Returns:
+        bool: 仅当 Telegram 确认 ok 时返回 True
+    """
+    url = f"https://api.telegram.org/bot{bot_token}/sendDocument"
+
+    proxies = None
+    if proxy_url:
+        proxies = {"http": proxy_url, "https": proxy_url}
+
+    path = Path(document_path)
+    if not path.is_file():
+        print(f"{log_prefix}附件文件不存在，跳过附件发送：{document_path}")
+        return False
+
+    try:
+        size = path.stat().st_size
+    except OSError as e:
+        print(f"{log_prefix}附件无法读取大小，跳过附件发送：{document_path}：{e}")
+        return False
+
+    if max_file_mb and max_file_mb > 0:
+        limit = int(max_file_mb * 1024 * 1024)
+        if size > limit:
+            print(
+                f"{log_prefix}附件过大（{size} 字节 > {max_file_mb}MB），跳过附件发送：{document_path}"
+            )
+            return False
+
+    send_name = filename or path.name
+    data = {"chat_id": chat_id}
+    if caption:
+        data["caption"] = caption
+
+    try:
+        with open(path, "rb") as f:
+            files = {"document": (send_name, f, "text/html")}
+            response = requests.post(
+                url, data=data, files=files, proxies=proxies, timeout=timeout
+            )
+        if response.status_code == 200 and response.json().get("ok"):
+            print(f"{log_prefix}附件发送成功（{send_name}，{size} 字节）")
+            return True
+        description = ""
+        try:
+            description = response.json().get("description", "")
+        except Exception:
+            description = f"状态码：{response.status_code}"
+        print(f"{log_prefix}附件发送失败，错误：{description}")
+        return False
+    except Exception as e:
+        print(f"{log_prefix}附件发送出错：{e}")
+        return False
+
+
 def send_to_email(
     from_email: str,
     password: str,
