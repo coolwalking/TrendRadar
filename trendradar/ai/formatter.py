@@ -7,6 +7,7 @@ AI 分析结果格式化模块
 
 import html as html_lib
 import re
+import unicodedata
 from .analyzer import AIAnalysisResult
 from .evidence import (
     LABELS,
@@ -241,6 +242,7 @@ def _render_env_telegram(result: AIAnalysisResult) -> str:
 # ════════════════════════════════════════════════════════════════
 
 ALERT_TITLE = "TrendRadar｜异常提醒"
+DAILY_DIGEST_TITLE = "TrendRadar｜每日简报"
 
 # 自动提醒候选桶优先级（silence_gap 不进自动提醒，留给每日简报）
 _ALERT_BUCKET_ORDER = [
@@ -256,8 +258,27 @@ _ALERT_STATUS_LABELS = {
     "chinese_only_hot": "中文独热",
 }
 
+# 与 _ALERT_BUCKET_ORDER 当前顺序相同，但语义独立——daily digest 不受 heat gate /
+# cooldown 约束，未来桶集合和优先级可能与 realtime alert 分叉，故不复用。
+_DAILY_DIGEST_PRIMARY_BUCKET_ORDER = [
+    "cross_layer_verified",
+    "high_heat_unverified",
+    "chinese_only_hot",
+]
+
+_DAILY_DIGEST_FILLER_BUCKET_ORDER = [
+    "silence_gap",
+]
+
+_DAILY_DIGEST_STATUS_LABELS = {
+    **_ALERT_STATUS_LABELS,
+    "silence_gap": "沉默温差",
+}
+
 # 单条摘要在 alert brief 里的最大字符数（过长先截断单条，绝不拆成多批）
 _ALERT_MAX_SUMMARY = 120
+_DAILY_DIGEST_MAX_ITEMS = 5
+_DAILY_DIGEST_MAX_SUMMARY = 140
 
 
 def _truncate_text(text: str, max_chars: int) -> str:
@@ -266,6 +287,73 @@ def _truncate_text(text: str, max_chars: int) -> str:
     if len(text) <= max_chars:
         return text
     return text[:max_chars].rstrip() + "…"
+
+
+def _daily_topic_key(topic: str) -> str:
+    """daily digest 内部去重 key：仅合并大小写/全半角/空白标点差异。"""
+    if not topic:
+        return ""
+    s = unicodedata.normalize("NFKC", str(topic)).strip().lower()
+    out = []
+    for ch in s:
+        if ch.isspace():
+            continue
+        cat = unicodedata.category(ch)
+        if cat.startswith("P") or cat.startswith("S"):
+            continue
+        out.append(ch)
+    return "".join(out)
+
+
+def _daily_digest_entry(bucket: str, item: dict) -> dict:
+    """把 environment item 压成 Telegram daily digest 允许展示的字段。"""
+    return {
+        "bucket": bucket,
+        "topic": str(item.get("topic", "") or "").strip(),
+        "status_label": _DAILY_DIGEST_STATUS_LABELS.get(bucket)
+        or str(item.get("verification_status", "") or "").strip(),
+        "source_layers": str(item.get("source_layers", "") or "").strip(),
+        "highest_heat": str(item.get("highest_heat", "") or "").strip(),
+        "summary": str(item.get("summary", "") or "").strip(),
+    }
+
+
+def select_environment_daily_digest_items(result, max_items=_DAILY_DIGEST_MAX_ITEMS):
+    """选择 Telegram environment daily digest 的 Top N 展示项。
+
+    与 realtime alert selection 完全分离：不读取 alert 配置、不套 heat gate、
+    不触达 cooldown/state。silence_gap 只在前三类不足时补位。
+    """
+    if not result or not getattr(result, "success", False):
+        return []
+    if getattr(result, "report_style", "classic") != "environment":
+        return []
+
+    selected = []
+    seen_topics = set()
+
+    def add_from_bucket(bucket: str) -> None:
+        if len(selected) >= max_items:
+            return
+        for item in getattr(result, bucket, []) or []:
+            if len(selected) >= max_items:
+                return
+            if not isinstance(item, dict):
+                continue
+            topic = str(item.get("topic", "") or "").strip()
+            key = _daily_topic_key(topic)
+            if not key or key in seen_topics:
+                continue
+            seen_topics.add(key)
+            selected.append(_daily_digest_entry(bucket, item))
+
+    for bucket in _DAILY_DIGEST_PRIMARY_BUCKET_ORDER:
+        add_from_bucket(bucket)
+    if len(selected) < max_items:
+        for bucket in _DAILY_DIGEST_FILLER_BUCKET_ORDER:
+            add_from_bucket(bucket)
+
+    return selected
 
 
 def select_environment_alert_items(result, max_items=3, allowed_labels=None):
@@ -371,6 +459,63 @@ def render_environment_telegram_alert_brief(
                 lines.append(_escape_html(risk))
 
         lines.append("")
+
+    if html_file_path:
+        lines.append(f"完整报告：{_escape_html(str(html_file_path))}")
+    ts = (now or datetime.now()).strftime("%Y-%m-%d %H:%M:%S")
+    lines.append(f"更新时间：{ts}")
+
+    return "\n".join(lines).rstrip()
+
+
+def render_environment_telegram_daily_digest(
+    result, html_file_path=None, now=None, max_items=_DAILY_DIGEST_MAX_ITEMS
+):
+    """渲染 environment 每日简报（Telegram parse_mode=HTML）。
+
+    只输出 digest layer：盘面数字 + Top N 简短条目 + 完整报告路径/URL + 更新时间。
+    不读取证据详情字段，不展开 source_links / sample_titles / evidence_detail。
+    """
+    from datetime import datetime
+
+    r = derive_radar_readout(result.overview_stats or {})
+    lines = [f"<b>{_escape_html(DAILY_DIGEST_TITLE)}</b>", ""]
+    lines.extend([
+        "<b>今日盘面</b>",
+        f"异常 {r['anomaly']}｜已抑制 {r['suppressed']}",
+        f"跨层呼应 {r['cross_layer']}｜高热待核实 {r['high_heat']}",
+        f"中文独热 {r['chinese_only']}｜沉默温差 {r['silence_gap']}",
+        "",
+    ])
+
+    items = select_environment_daily_digest_items(result, max_items=max_items)
+    if items:
+        lines.append("<b>今日重点</b>")
+        for idx, item in enumerate(items, 1):
+            topic = _escape_html(item["topic"])
+            lines.append(f"{idx}. <b>{topic}</b>")
+
+            meta_parts = []
+            if item["status_label"]:
+                meta_parts.append(item["status_label"])
+            if item["source_layers"] and item["source_layers"] != "-":
+                meta_parts.append(item["source_layers"])
+            if item["highest_heat"] and item["highest_heat"] != "-":
+                meta_parts.append(f"最高热度 {item['highest_heat']}")
+            if meta_parts:
+                lines.append(_escape_html("｜".join(meta_parts)))
+
+            if item["summary"]:
+                lines.append(_escape_html(_truncate_text(
+                    item["summary"], _DAILY_DIGEST_MAX_SUMMARY
+                )))
+            lines.append("")
+    else:
+        lines.extend([
+            "今日未发现高优先级异常信号。",
+            "低优先级观察项已收录在完整报告中。",
+            "",
+        ])
 
     if html_file_path:
         lines.append(f"完整报告：{_escape_html(str(html_file_path))}")
