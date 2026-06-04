@@ -278,18 +278,16 @@ class TestDispatcherAttachments(unittest.TestCase):
             self._send_realtime(d, _AI(report_style="classic"))
         doc.assert_not_called()
 
-    def test_realtime_real_push_attaches_each_receiver(self):
+    def test_realtime_current_no_longer_attaches(self):
+        # 行为变更：current/incremental 改为轻量 dashboard、不再生成 full.html，
+        # realtime_alert 的 HTML 附件已停用——即使真实推送（commit）也不附件。
         cfg = _config(receivers="111,222")
         d = self._dispatcher(cfg, backend=_Backend())
         with mock.patch.object(DISPATCHER, "send_to_telegram", side_effect=self._fake_text_send(commit=True)), \
-             mock.patch.object(DISPATCHER, "send_telegram_document", return_value=True) as doc:
-            self._send_realtime(d, _AI())
-        self.assertEqual(doc.call_count, 2)
-        sent_chats = {c.args[1] for c in doc.call_args_list}
-        self.assertEqual(sent_chats, {"111", "222"})
-        # 文件名带 group，不应是 full.html
-        for c in doc.call_args_list:
-            self.assertEqual(c.kwargs["filename"], "trendradar-current-20260604-0800.html")
+             mock.patch.object(DISPATCHER, "send_telegram_document") as doc:
+            ok = self._send_realtime(d, _AI())
+        self.assertTrue(ok)
+        doc.assert_not_called()
 
     def test_realtime_silent_round_does_not_attach(self):
         # 文本返回成功但未 commit（冷却/无候选静默成功）→ had_realtime_alert_items=False
@@ -302,21 +300,24 @@ class TestDispatcherAttachments(unittest.TestCase):
         doc.assert_not_called()
 
     def test_only_text_success_receivers_get_attachment(self):
+        # daily_digest 附件：仅文本发送成功的 receiver 获得附件（daily 路径，current 已停用附件）。
         cfg = _config(receivers="111,222")
         d = self._dispatcher(cfg, backend=_Backend())
         fake = self._fake_text_send(commit=True, fail_chat="222")
         with mock.patch.object(DISPATCHER, "send_to_telegram", side_effect=fake), \
              mock.patch.object(DISPATCHER, "send_telegram_document", return_value=True) as doc:
-            self._send_realtime(d, _AI())
+            self._send_realtime(d, _AI(), mode="daily")
         self.assertEqual(doc.call_count, 1)
         self.assertEqual(doc.call_args_list[0].args[1], "111")
+        self.assertEqual(doc.call_args_list[0].kwargs["filename"], "trendradar-daily-20260604-0800.html")
 
     def test_attachment_failure_does_not_fail_text_round(self):
+        # daily_digest 附件失败不影响文本推送结果（current 已停用附件）。
         cfg = _config()
         d = self._dispatcher(cfg, backend=_Backend())
         with mock.patch.object(DISPATCHER, "send_to_telegram", side_effect=self._fake_text_send()), \
              mock.patch.object(DISPATCHER, "send_telegram_document", return_value=False):
-            ok = self._send_realtime(d, _AI())
+            ok = self._send_realtime(d, _AI(), mode="daily")
         self.assertTrue(ok)
 
     def test_daily_digest_attaches_without_alert_store(self):
@@ -367,9 +368,10 @@ class TestDispatcherAttachments(unittest.TestCase):
              mock.patch.object(DISPATCHER, "send_telegram_document", side_effect=fake_doc):
             self._send_realtime(d, _AI())
 
+        # current 不再附件：文本两条 + 一次 flush，flush 之后没有 doc 事件。
         self.assertEqual(
             events,
-            [("text", "111"), ("text", "222"), ("flush",), ("doc", "111"), ("doc", "222")],
+            [("text", "111"), ("text", "222"), ("flush",)],
         )
         # 附件阶段没有产生额外的 cooldown commit：底层 store 只被两条文本各 commit 一次。
         flush_idx = events.index(("flush",))

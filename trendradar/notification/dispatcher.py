@@ -760,7 +760,10 @@ class NotificationDispatcher:
         is_env = report_style == "environment"
         eligible = False
         if is_env and mode in ("current", "incremental"):
-            eligible = "realtime_alert" in attach_on and had_realtime_alert_items
+            # current/incremental 改为轻量 dashboard，不再生成 public/current/full.html。
+            # 打断式推送回退为纯文本简报（详情见 dashboard 网页），realtime_alert 的
+            # HTML 附件已停用——避免尝试投递不存在的文件并产生误导性失败日志。
+            eligible = False
         elif is_env and mode == "daily":
             eligible = "daily_digest" in attach_on
         if not eligible:

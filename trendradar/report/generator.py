@@ -258,4 +258,13 @@ def generate_html_report(
     with open(output_index, "w", encoding="utf-8") as f:
         f.write(_OUTPUT_INDEX_REDIRECT_HTML)
 
+    # 5. 写发布根 landing（public/index.html，幂等）。
+    #    daily 运行只经过本函数、不经过 write_dashboard，此处确保
+    #    daily-only 部署下 landing 始终存在（避免 output/index.html 跳转到死链）。
+    from trendradar.report.dashboard import PUBLIC_LANDING_HTML
+
+    public_index = Path(output_dir) / "public" / "index.html"
+    with open(public_index, "w", encoding="utf-8") as f:
+        f.write(PUBLIC_LANDING_HTML)
+
     return snapshot_file
