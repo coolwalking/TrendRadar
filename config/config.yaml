@@ -35,6 +35,7 @@ app:
 #   morning_evening → 全天推送 + 晚间当日汇总（推荐）
 #   office_hours    → 工作日三段式（到岗→午间→收工），周末增量自由推
 #   night_owl       → 午后速览 + 深夜全天汇总
+#   daily_brief     → 全天采集 + 夜间一次性每日简报
 #   custom          → 完全自定义，详见 timeline.yaml
 #
 # 详细时间线图请查看 config/timeline.yaml

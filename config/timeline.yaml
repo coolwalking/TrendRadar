@@ -86,7 +86,8 @@
 #   2️⃣ morning_evening  全天推送 + 晚间汇总（推荐大多数人）
 #   3️⃣ office_hours     工作日三段式：到岗速览→午间热点→收工汇总
 #   4️⃣ night_owl        午后速览 + 深夜全天汇总
-#   5️⃣ custom           完全自定义（需要编辑本文件底部的 custom 段）
+#   5️⃣ daily_brief      全天采集 + 夜间一次性每日简报
+#   6️⃣ custom           完全自定义（需要编辑本文件底部的 custom 段）
 #
 # 想自定义？两种方式：
 #   1. 直接翻到本文件底部的「自定义模式」部分
@@ -350,9 +351,63 @@ presets:
       7: "all_day"
 
 
+  # ───────────────────────────────────────────────────────────
+  # 5️⃣ daily_brief - 每日简报
+  #
+  # 全天静默采集，夜间一次性推送压缩版「每日简报」。
+  # 适合：只想每天看一次全天汇总、不愿被频繁打扰的用户。
+  #
+  # 默认（全天静默）：采集 ✓ | 分析 ✗ | 推送 ✗
+  # 夜间简报 20:00-22:00：分析 ✓(daily) | 推送 ✓(daily) | 只分析/推送一次
+  # ───────────────────────────────────────────────────────────
+  daily_brief:
+    name: "每日简报"
+    description: "全天静默采集，夜间一次性推送当日压缩简报。"
+
+    # 默认配置 ── 全天大部分时间走这里：只采集、不打扰
+    default:
+      collect: true                # 全天持续采集，积累完整数据
+      analyze: false               # 白天不分析，节省 API
+      ai_mode: "current"           # AI 分析当前榜单（默认时段不会触发）
+      push: false                  # 白天不推送，保持安静
+      report_mode: "current"       # 当前在榜的新闻
+      once:
+        analyze: true              # 命中时段内只分析一次
+        push: true                 # 命中时段内只推送一次
+
+    # 时间段定义 ── 仅夜间一个窗口做汇总推送
+    periods:
+      late_daily_brief:
+        name: "夜间简报"
+        start: "20:00"
+        end: "22:00"
+        analyze: true              # 夜间做一次 AI 全天分析
+        ai_mode: "daily"           # AI 汇总全天内容
+        push: true                 # 推送当日简报
+        report_mode: "daily"       # 当日全部新闻汇总
+        once:
+          analyze: true            # 窗口内只分析一次
+          push: true               # 窗口内只推送一次
+
+    # 日计划 ── 全天只挂载夜间简报窗口
+    day_plans:
+      all_day:
+        periods: ["late_daily_brief"]
+
+    # 周映射 ── 每天都用 all_day
+    week_map:
+      1: "all_day"                 # 周一
+      2: "all_day"                 # 周二
+      3: "all_day"                 # 周三
+      4: "all_day"                 # 周四
+      5: "all_day"                 # 周五
+      6: "all_day"                 # 周六
+      7: "all_day"                 # 周日
+
+
 # ═══════════════════════════════════════════════════════════════
 #
-# 5️⃣ 自定义模式
+# 6️⃣ 自定义模式
 #
 # 当 config.yaml 中设置 schedule.preset: "custom" 时，
 # 系统会读取下面这段配置。
