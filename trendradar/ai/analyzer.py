@@ -803,6 +803,7 @@ class AIAnalyzer:
                     "verification_status": meta["verification_status"],
                     "factual_boundary": meta["factual_boundary"],
                     "sentiment_flag": bool(item.get("sentiment_flag")),
+                    "evidence_detail": item,
                 }
                 if label == "high_heat_unverified":
                     entry["risk_note"] = RISK_NOTE_HIGH_HEAT

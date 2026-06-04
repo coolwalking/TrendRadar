@@ -149,6 +149,27 @@ class TestBuildEvidenceEndToEnd(unittest.TestCase):
         self.assertEqual(it["label"], "high_heat_unverified")
         self.assertTrue(it["sentiment_flag"])
 
+    def test_source_links_are_program_copied_not_prompted(self):
+        stats = [{
+            "word": "AI前沿模型",
+            "titles": [T("GPT传闻", "微博", 5, url="https://example.com/weibo?q=1")],
+        }]
+        rss_stats = [{
+            "word": "AI前沿模型",
+            "titles": [T("OpenAI ships", "OpenAI News", 1, url="https://example.com/openai")],
+        }]
+        _, items = label_of(stats, rss_stats)
+        item = items[0]
+        links = item["source_links"]
+        self.assertEqual(links[0]["url"], "https://example.com/openai")
+        self.assertEqual(links[0]["tier"], "A")
+        self.assertEqual(links[1]["url"], "https://example.com/weibo?q=1")
+
+        buckets = EV.bucketize(items)
+        prompt = EV.render_evidence_for_prompt(buckets, EV.build_overview_stats(buckets))
+        self.assertNotIn("https://example.com/openai", prompt)
+        self.assertNotIn("https://example.com/weibo", prompt)
+
 
 class TestBucketizeAndOverview(unittest.TestCase):
     def _items(self):
