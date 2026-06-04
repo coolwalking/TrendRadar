@@ -74,12 +74,14 @@ def load_all():
     _ensure_pkg("trendradar")
     _ensure_pkg("trendradar.ai")
     _ensure_pkg("trendradar.core")
+    _ensure_pkg("trendradar.telegram_bot")
 
     _install_client_stub()
     # 真实 prompt_loader（纯标准库，会实际读取 config/ 下的 prompt 文件）
     _load_file("trendradar.ai.prompt_loader", "trendradar/ai/prompt_loader.py")
 
     source_tiers = _load_file("trendradar.core.source_tiers", "trendradar/core/source_tiers.py")
+    access = _load_file("trendradar.telegram_bot.access", "trendradar/telegram_bot/access.py")
     evidence = _load_file("trendradar.ai.evidence", "trendradar/ai/evidence.py")
     analyzer = _load_file("trendradar.ai.analyzer", "trendradar/ai/analyzer.py")
     formatter = _load_file("trendradar.ai.formatter", "trendradar/ai/formatter.py")
@@ -87,6 +89,7 @@ def load_all():
     _CACHE = SimpleNamespace(
         ROOT=ROOT,
         source_tiers=source_tiers,
+        access=access,
         evidence=evidence,
         analyzer=analyzer,
         formatter=formatter,
