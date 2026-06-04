@@ -562,7 +562,11 @@ class NotificationDispatcher:
         ):
             from trendradar.ai.alert_state import AlertStateStore
 
-            alert_state_store = AlertStateStore(self.storage_backend)
+            alert_state_store = AlertStateStore(
+                self.storage_backend,
+                state_ttl_days=alert_config.get("STATE_TTL_DAYS", 14),
+                cooldown_minutes=alert_config.get("COOLDOWN_MINUTES", 180),
+            )
 
         results = []
         for i in range(len(telegram_tokens)):
