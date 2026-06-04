@@ -53,6 +53,7 @@ class NotificationDispatcher:
         get_time_func: Callable,
         split_content_func: Callable,
         translator: Optional["AITranslator"] = None,
+        storage_backend: Any = None,
     ):
         """
         初始化通知调度器
@@ -62,12 +63,14 @@ class NotificationDispatcher:
             get_time_func: 获取当前时间的函数
             split_content_func: 内容分批函数
             translator: AI 翻译器实例（可选）
+            storage_backend: 存储后端（可选，用于 environment 实时提醒的 cooldown 状态持久化）
         """
         self.config = config
         self.get_time_func = get_time_func
         self.split_content_func = split_content_func
         self.max_accounts = config.get("MAX_ACCOUNTS_PER_CHANNEL", 3)
         self.translator = translator
+        self.storage_backend = storage_backend
 
     def translate_content(
         self,
@@ -546,6 +549,15 @@ class NotificationDispatcher:
         telegram_tokens = limit_accounts(telegram_tokens, self.max_accounts, "Telegram")
         telegram_chat_ids = telegram_chat_ids[: len(telegram_tokens)]
 
+        # environment 实时提醒的 cooldown 状态存储（仅在启用且有存储后端时构造，惰性加载）。
+        # 多账号共享 topic 级状态：同议题对所有账号一次冷却（MVP 取舍）。classic 风格不会触达。
+        alert_config = self.config.get("ALERT", {})
+        alert_state_store = None
+        if self.storage_backend is not None and alert_config.get("ENABLED", True):
+            from trendradar.ai.alert_state import AlertStateStore
+
+            alert_state_store = AlertStateStore(self.storage_backend)
+
         results = []
         for i in range(len(telegram_tokens)):
             token = telegram_tokens[i]
@@ -571,6 +583,8 @@ class NotificationDispatcher:
                     standalone_data=standalone_data,
                     html_file_path=html_file_path,
                     get_time_func=self.get_time_func,
+                    alert_state_store=alert_state_store,
+                    alert_config=alert_config,
                 )
                 results.append(result)
 

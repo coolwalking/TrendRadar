@@ -520,6 +520,40 @@ ai_analysis:
 
 
 # ===============================================================
+# 9.5 实时异常提醒门控（cooldown / 去重 / 升级再推）
+#
+# 作用域（确定规则）：仅 environment 风格 + 自动实时推送（report.mode ∈ {current, incremental}）。
+# 本配置仅作用于 Telegram environment 实时自动提醒（current / incremental），
+# daily 模式（含 daily_brief）不受影响——每日推送不被候选 gate 静默、也不读写 alert_state。
+# 明确不适用：
+#   - daily 模式（含 daily_brief 预设）—— 每日推送不被候选 gate 静默、也不读写 alert_state
+#   - 手动 /now 拉取实时报告（未来功能，绕过 gate 直接完整渲染）
+#   - classic report_style、HTML 完整报告、其它通知渠道的常规推送
+#
+# 解决的问题：同一议题每次 cron 运行都重复推送、打扰用户。
+# 核心语义：默认克制；同一议题短时间内不重复推；只有「信息结构升级」才突破冷却再推。
+# 状态存储：output/alert_state.json（本地）或对象存储 alert_state.json（远程/GitHub Actions）。
+# ===============================================================
+alert:
+  enabled: true                       # 总开关；false = 退回上一阶段行为（选到候选即推，无冷却）
+  cooldown_minutes: 180               # 同一议题（topic_key）的冷却窗口（分钟）内不重复推
+  max_items: 3                        # 单轮最多推送的异常信号条数
+  allow_upgrade_break_cooldown: true  # 发生升级时是否可突破冷却再推
+
+  # high_heat_unverified（高热待核实）自动推门槛：满足任一即可自动推，否则留给每日简报
+  high_heat_min_rank: 10              # D 层最高名次 ≤ 此值
+  high_heat_min_platforms: 2          # 或 D 层平台数 ≥ 此值
+
+  # 进入自动推送的候选标签（silence_gap 永不进自动提醒，留给每日简报）
+  # 语义：省略或 null → 使用默认优先级顺序（三个桶全开）；
+  #       空列表 [] → 禁用所有自动提醒（无桶可选，等效于静默）。
+  notify_labels:
+    - cross_layer_verified
+    - high_heat_unverified
+    - chinese_only_hot
+
+
+# ===============================================================
 # 10. AI 翻译功能（模型配置见上方 ai 段）
 #
 # 对推送标题进行翻译，不包含 AI 分析的内容

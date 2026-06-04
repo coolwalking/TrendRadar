@@ -33,6 +33,36 @@ from .batch import add_batch_headers, get_max_batch_header_size, truncate_at_lin
 from .formatters import convert_markdown_to_mrkdwn, strip_markdown
 
 
+# ════════════════════════════════════════════════════════════════
+# 实时异常提醒 gate 的作用域规则（唯一来源，勿在别处复制这些条件）
+# ════════════════════════════════════════════════════════════════
+
+# realtime alert gate 只作用于「自动实时推送」的报告模式。
+REALTIME_ALERT_MODES = ("current", "incremental")
+
+
+def should_apply_realtime_alert_gate(
+    report_style: str, mode: str, manual_trigger: bool = False
+) -> bool:
+    """是否对本次 Telegram 推送应用 realtime alert gate（候选筛选 + cooldown/去重/升级）。
+
+    规则（确定、唯一来源——所有分流判断都必须经由本函数，禁止在别处内联同等条件）：
+      1. 仅 environment 报告风格适用；
+      2. 仅自动实时推送适用：mode ∈ {current, incremental}；
+      3. daily（含 daily_brief 预设）一律不适用——每日推送不被候选 gate 静默，
+         也不读写 alert_state；daily digest 由专门 renderer 负责；
+      4. 未来手动 /now 拉取（manual_trigger=True）一律不适用——直接复用 renderer 绕过 gate。
+
+    默认从严：任何不在白名单内的情形（未知 mode、缺省、手动触发）都返回 False，
+    即"不施加 gate"，避免误将非实时推送静默掉。
+    """
+    if manual_trigger:
+        return False
+    if report_style != "environment":
+        return False
+    return mode in REALTIME_ALERT_MODES
+
+
 def _extract_ai_stats(ai_analysis) -> Optional[Dict]:
     """从 AI 分析结果中提取统计数据"""
     if not ai_analysis or not getattr(ai_analysis, "success", False):
@@ -490,6 +520,9 @@ def send_to_telegram(
     standalone_data: Optional[Dict] = None,
     html_file_path: Optional[str] = None,
     get_time_func: Optional[Callable] = None,
+    alert_state_store: Any = None,
+    alert_config: Optional[Dict] = None,
+    manual_trigger: bool = False,
 ) -> bool:
     """
     发送到 Telegram（支持分批发送，支持热榜+RSS合并+独立展示区）
@@ -510,6 +543,11 @@ def send_to_telegram(
         rss_new_items: RSS 新增条目列表（可选，用于新增区块）
         html_file_path: HTML 报告路径（environment alert brief 用于"完整报告"链接）
         get_time_func: 获取当前时间的函数（environment alert brief 时间戳，统一时区）
+        alert_state_store: 实时提醒 cooldown 状态存储（AlertStateStore，可选）；
+            为 None 时不做冷却/去重/升级过滤（行为同未启用）
+        alert_config: 实时提醒门控配置（ALERT 段，大写键），驱动 cooldown / heat gate
+        manual_trigger: 是否为手动触发（未来 /now 拉取实时报告）；True 时绕过 realtime alert gate，
+            直接走完整渲染（不做候选筛选 / cooldown）
 
     Returns:
         bool: 发送是否成功
@@ -524,23 +562,56 @@ def send_to_telegram(
     # 日志前缀
     log_prefix = f"Telegram{account_label}" if account_label else "Telegram"
 
-    # === environment 风格：走异常提醒 alert brief 单条路径（不进通用分批器）===
-    # Telegram 自动推送在 environment 下是 alert layer：只回答"有没有值得打断用户的异常信号"，
-    # HTML 报告仍负责完整阅读与证据展开。classic 风格保持下方原 split_content_func 逻辑。
+    # === realtime alert gate：environment + 自动实时模式 → 走异常提醒 alert brief 单条路径 ===
+    # 作用域规则统一由 should_apply_realtime_alert_gate 决定（current/incremental 自动推送）：
+    #   - daily（含 daily_brief）与手动 /now 不在此分支，落到下方完整报告 split 路径；
+    #   - 仅本分支做候选筛选 + cooldown/去重/升级，并读写 alert_state；
+    #   - cooldown / alert gate 不影响 daily digest（daily 由专门 renderer 负责，不读写 alert_state）；
+    #   - HTML 报告始终负责完整阅读与证据展开。classic 风格保持下方原逻辑。
     report_style = getattr(ai_analysis, "report_style", "classic") if ai_analysis else "classic"
-    if ai_analysis and getattr(ai_analysis, "success", False) and report_style == "environment":
+    if (
+        ai_analysis
+        and getattr(ai_analysis, "success", False)
+        and should_apply_realtime_alert_gate(report_style, mode, manual_trigger)
+    ):
         from trendradar.ai.formatter import (
             render_environment_telegram_alert_brief,
             select_environment_alert_items,
         )
 
-        items = select_environment_alert_items(ai_analysis, max_items=3)
+        alert_cfg = alert_config or {}
+        max_items = alert_cfg.get("MAX_ITEMS", 3)
+        notify_labels = alert_cfg.get("NOTIFY_LABELS")
+        # 语义：先按 notify_labels 限定允许的桶，再按优先级选满 max_items；
+        # 不是「先选 3 条再过滤」——那会在窄白名单时误丢候选。
+        items = select_environment_alert_items(
+            ai_analysis, max_items=max_items, allowed_labels=notify_labels,
+        )
+        # 防御性兜底：selector 已按 allowed_labels 过滤，此处再过滤一次仅为容错
+        if notify_labels:
+            items = [(label, it) for (label, it) in items if label in notify_labels]
+
+        now = get_time_func() if get_time_func else datetime.now()
+
+        # cooldown / 去重 / 升级再推 + high_heat heat gate（仅在注入 store 时生效；
+        # store=None（未启用 / 无存储后端）→ 跳过，行为同上一阶段）
+        if alert_state_store is not None:
+            from trendradar.ai.alert_state import apply_alert_cooldown
+
+            cooldown_cfg = {
+                "cooldown_minutes": alert_cfg.get("COOLDOWN_MINUTES", 180),
+                "max_items": max_items,
+                "allow_upgrade_break_cooldown": alert_cfg.get("ALLOW_UPGRADE_BREAK_COOLDOWN", True),
+                "high_heat_min_rank": alert_cfg.get("HIGH_HEAT_MIN_RANK", 10),
+                "high_heat_min_platforms": alert_cfg.get("HIGH_HEAT_MIN_PLATFORMS", 2),
+            }
+            items = apply_alert_cooldown(items, alert_state_store, now, cooldown_cfg)
+
         if not items:
-            # 无候选：静默成功，不发送消息（"暂无异常"不主动打断用户，留给未来手动 /now）
-            print(f"{log_prefix}本轮无异常提醒候选，跳过推送 [{report_type}]")
+            # 无候选 / 全部处于冷却或未达门槛：静默成功，不打断用户（留给每日简报或未来手动 /now）
+            print(f"{log_prefix}本轮无可推送的异常提醒候选（冷却/门槛/无候选），跳过推送 [{report_type}]")
             return True
 
-        now = get_time_func() if get_time_func else None
         text = render_environment_telegram_alert_brief(
             ai_analysis,
             items,
@@ -565,6 +636,9 @@ def send_to_telegram(
             )
             if response.status_code == 200 and response.json().get("ok"):
                 print(f"{log_prefix}异常提醒发送成功（{len(items)} 个信号）[{report_type}]")
+                # 仅在 POST 成功后落盘冷却状态：失败/未推不写，保证下轮可补推
+                if alert_state_store is not None:
+                    alert_state_store.commit(items, now)
                 return True
             description = ""
             try:
