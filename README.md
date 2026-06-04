@@ -5,8 +5,6 @@
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg?style=flat-square)](LICENSE)
 [![Version](https://img.shields.io/badge/version-v6.9.0-blue.svg)](https://github.com/carrot-peace/TrendRadar)
 
-**中文** | **[English](README-EN.md)**
-
 ---
 
 ## 这个项目是什么
@@ -22,7 +20,7 @@ TrendRadar 用于监测多平台信息环境中的异常信号。它同时接入
 ## 这个项目不是什么
 
 - 不是新闻客户端或 RSS 阅读器
-- 不是 newsletter 或热点摘要推送工具
+- 不是以 newsletter 或热点摘要消费为核心目标的新闻产品
 - 不是事实核查工具——它不判断真假
 - 不是舆情结论生成器——它不输出"事件已发生"
 - 不是让 AI 直接判断真假的系统
@@ -164,9 +162,13 @@ docker compose up -d
 2. 在仓库 Settings → Secrets 中配置所需环境变量（推送 Webhook、AI API Key 等）
 3. 启用 `.github/workflows/crawler.yml` 中的定时任务
 
+> 该部署方式需要远程存储、Secrets 和 workflow 配置，当前建议有经验用户使用。
+
 ### AI 分析（可选）
 
-AI 分析功能需要配置 API Key。在 `config/config.yaml` 的 `ai` 段配置：
+AI 分析功能需要配置 API Key。如果不使用 AI 分析，需要在 `config/config.yaml` 中设置 `ai_analysis.enabled: false`，或通过环境变量 `AI_ANALYSIS_ENABLED=false` 关闭。
+
+启用时，在 `config/config.yaml` 的 `ai` 段配置：
 
 ```yaml
 ai:

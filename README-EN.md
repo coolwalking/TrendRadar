@@ -22,7 +22,7 @@ TrendRadar monitors anomaly signals across multi-platform information environmen
 ## What This Project Is Not
 
 - Not a news client or RSS reader
-- Not a newsletter or hot-topic digest push tool
+- Not a news product centered on newsletter or hot-topic digest consumption
 - Not a fact-checking tool — it does not judge true or false
 - Not a public opinion conclusion generator — it does not output "event has occurred"
 - Not a system that lets AI directly judge truth or falsehood
@@ -164,9 +164,13 @@ docker compose up -d
 2. Configure required environment variables in repository Settings → Secrets (push Webhooks, AI API Key, etc.)
 3. Enable the scheduled task in `.github/workflows/crawler.yml`
 
+> This deployment method requires remote storage, Secrets, and workflow configuration. Currently recommended for experienced users.
+
 ### AI Analysis (Optional)
 
-AI analysis requires an API Key. Configure in the `ai` section of `config/config.yaml`:
+AI analysis requires an API Key. If you do not use AI analysis, set `ai_analysis.enabled: false` in `config/config.yaml`, or disable via environment variable `AI_ANALYSIS_ENABLED=false`.
+
+When enabling, configure in the `ai` section of `config/config.yaml`:
 
 ```yaml
 ai:
