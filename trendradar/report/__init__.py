@@ -24,6 +24,11 @@ from trendradar.report.generator import (
     prepare_report_data,
     generate_html_report,
 )
+from trendradar.report.dashboard import (
+    render_current_dashboard_html,
+    build_dashboard_state,
+    write_dashboard,
+)
 
 __all__ = [
     # 辅助函数
@@ -37,4 +42,8 @@ __all__ = [
     # 报告生成器
     "prepare_report_data",
     "generate_html_report",
+    # Current Dashboard
+    "render_current_dashboard_html",
+    "build_dashboard_state",
+    "write_dashboard",
 ]
