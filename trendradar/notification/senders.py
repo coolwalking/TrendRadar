@@ -651,6 +651,52 @@ def send_to_telegram(
             print(f"{log_prefix}异常提醒发送出错 [{report_type}]：{e}")
             return False
 
+    # === daily digest：environment + daily → Telegram 单条每日简报 ===
+    # 与 realtime alert gate 完全分离：不做候选 gate / cooldown / heat gate，
+    # 不读写 alert_state；若 digest 构造失败，fail-open 回退到下方完整 split 路径。
+    if (
+        ai_analysis
+        and getattr(ai_analysis, "success", False)
+        and report_style == "environment"
+        and mode == "daily"
+    ):
+        try:
+            from trendradar.ai.formatter import render_environment_telegram_daily_digest
+
+            now = get_time_func() if get_time_func else datetime.now()
+            text = render_environment_telegram_daily_digest(
+                ai_analysis,
+                html_file_path=html_file_path,
+                now=now,
+            )
+            text = truncate_at_line_boundary(text, min(batch_size, 3900))
+        except Exception as e:
+            print(f"{log_prefix}每日简报渲染失败，回退完整分批路径 [{report_type}]：{e}")
+        else:
+            payload = {
+                "chat_id": chat_id,
+                "text": text,
+                "parse_mode": "HTML",
+                "disable_web_page_preview": True,
+            }
+            try:
+                response = requests.post(
+                    url, headers=headers, json=payload, proxies=proxies, timeout=30
+                )
+                if response.status_code == 200 and response.json().get("ok"):
+                    print(f"{log_prefix}每日简报发送成功 [{report_type}]")
+                    return True
+                description = ""
+                try:
+                    description = response.json().get("description", "")
+                except Exception:
+                    description = f"状态码：{response.status_code}"
+                print(f"{log_prefix}每日简报发送失败 [{report_type}]，错误：{description}")
+                return False
+            except Exception as e:
+                print(f"{log_prefix}每日简报发送出错 [{report_type}]：{e}")
+                return False
+
     # 渲染 AI 分析内容并提取统计数据
     ai_content = _render_ai_analysis(ai_analysis, "telegram") if ai_analysis else None
     ai_stats = _extract_ai_stats(ai_analysis)

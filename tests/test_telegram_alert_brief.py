@@ -285,6 +285,116 @@ class TestAlertBriefRenderer(unittest.TestCase):
 
 
 # ════════════════════════════════════════════════════════════════
+# renderer：每日简报 digest layer
+# ════════════════════════════════════════════════════════════════
+
+
+class TestDailyDigestRenderer(unittest.TestCase):
+    def setUp(self):
+        self.now = __import__("datetime").datetime(2026, 6, 4, 8, 30, 0)
+
+    def test_contains_daily_digest_essentials(self):
+        out = FMT.render_environment_telegram_daily_digest(
+            make_env_result(),
+            html_file_path="https://reports.example.com/latest.html",
+            now=self.now,
+        )
+        self.assertIn("TrendRadar｜每日简报", out)
+        self.assertIn("今日盘面", out)
+        self.assertIn("今日重点", out)
+        self.assertIn("异常 2｜已抑制 2", out)
+        self.assertIn("跨层呼应 1｜高热待核实 1", out)
+        self.assertIn("中文独热 0｜沉默温差 0", out)
+        self.assertIn("AI前沿模型", out)
+        self.assertIn("某明星瓜", out)
+        self.assertIn("https://reports.example.com/latest.html", out)
+        self.assertIn("2026-06-04 08:30:00", out)
+
+    def test_excludes_evidence_fields_but_allows_report_url(self):
+        out = FMT.render_environment_telegram_daily_digest(
+            make_env_result(),
+            html_file_path="https://reports.example.com/latest.html",
+            now=self.now,
+        )
+        for forbidden in [
+            "source_links", "sample_titles", "evidence_detail",
+            "抓取出处", "传播样本", "展开证据", "example.com/openai",
+        ]:
+            self.assertNotIn(forbidden, out)
+        self.assertIn("https://reports.example.com/latest.html", out)
+
+    def test_top_n_cap_and_silence_gap_only_fills(self):
+        result = AIAnalysisResult(
+            report_style="environment", success=True,
+            overview_stats={
+                "label_counts": {
+                    "cross_layer_verified": 5, "high_heat_unverified": 0,
+                    "sentiment_heavy": 0, "silence_gap": 1, "chinese_only_hot": 0,
+                },
+                "background_count": 0,
+                "layer_distribution": {"A": 5, "B": 0, "C": 0, "D": 5},
+            },
+            cross_layer_verified=[
+                {"topic": f"主异常{i}", "summary": "摘要", "source_layers": "A/D"}
+                for i in range(5)
+            ],
+            silence_gap=[{"topic": "补位沉默温差", "summary": "摘要", "source_layers": "B"}],
+        )
+        items = FMT.select_environment_daily_digest_items(result, max_items=5)
+        self.assertEqual(len(items), 5)
+        self.assertNotIn("补位沉默温差", [it["topic"] for it in items])
+
+        result.cross_layer_verified = result.cross_layer_verified[:2]
+        items = FMT.select_environment_daily_digest_items(result, max_items=5)
+        self.assertIn("补位沉默温差", [it["topic"] for it in items])
+        self.assertEqual(items[-1]["bucket"], "silence_gap")
+
+    def test_deduplicates_topic_across_buckets(self):
+        result = AIAnalysisResult(
+            report_style="environment", success=True,
+            cross_layer_verified=[{"topic": "AI 前沿模型！", "summary": "跨层", "source_layers": "A/D"}],
+            high_heat_unverified=[{"topic": "ai前沿模型", "summary": "高热", "source_layers": "D"}],
+        )
+        items = FMT.select_environment_daily_digest_items(result, max_items=5)
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["bucket"], "cross_layer_verified")
+
+    def test_no_anomaly_still_renders_digest(self):
+        result = AIAnalysisResult(
+            report_style="environment", success=True,
+            overview_stats={
+                "label_counts": {
+                    "cross_layer_verified": 0, "high_heat_unverified": 0,
+                    "sentiment_heavy": 0, "silence_gap": 0, "chinese_only_hot": 0,
+                },
+                "background_count": 8,
+                "layer_distribution": {"A": 0, "B": 0, "C": 0, "D": 0},
+            },
+        )
+        out = FMT.render_environment_telegram_daily_digest(result, now=self.now)
+        self.assertIn("异常 0｜已抑制 8", out)
+        self.assertIn("今日未发现高优先级异常信号。", out)
+        self.assertIn("低优先级观察项已收录在完整报告中。", out)
+
+    def test_long_summaries_stay_within_single_message_budget(self):
+        result = AIAnalysisResult(
+            report_style="environment", success=True,
+            cross_layer_verified=[
+                {
+                    "topic": f"超长摘要{i}",
+                    "summary": "传" * 5000,
+                    "source_layers": "A/D",
+                    "highest_heat": "微博 第1名",
+                }
+                for i in range(5)
+            ],
+        )
+        out = FMT.render_environment_telegram_daily_digest(result, now=self.now)
+        self.assertLess(len(out), 3900)
+        self.assertIn("…", out)
+
+
+# ════════════════════════════════════════════════════════════════
 # send_to_telegram 接入
 # ════════════════════════════════════════════════════════════════
 
@@ -346,6 +456,68 @@ class TestSendToTelegramRouting(unittest.TestCase):
             ok = _call_telegram(result, split)
         self.assertTrue(ok)
         self.assertTrue(split.called, "classic 应走原 split_content_func 分批路径")
+        self.assertGreaterEqual(post.call_count, 1)
+
+    def test_environment_daily_sends_single_digest_without_split(self):
+        result = make_env_result()
+        split = _SplitTracker()
+        store = AS.AlertStateStore(_FakeBackend())
+        with mock.patch.object(SENDERS.requests, "post", return_value=_ok_response()) as post:
+            ok = SENDERS.send_to_telegram(
+                bot_token="token", chat_id="chat",
+                report_data={"stats": [], "failed_ids": [], "new_titles": [], "id_to_name": {}},
+                report_type="当日汇总", mode="daily",
+                split_content_func=split,
+                ai_analysis=result,
+                html_file_path="output/html/latest/daily.html",
+                alert_state_store=store,
+                alert_config={**ALERT_CFG, "NOTIFY_LABELS": []},
+            )
+        self.assertTrue(ok)
+        self.assertEqual(post.call_count, 1)
+        self.assertFalse(split.called)
+        payload = post.call_args.kwargs["json"]
+        self.assertEqual(payload["parse_mode"], "HTML")
+        self.assertIn("TrendRadar｜每日简报", payload["text"])
+        self.assertIn("AI前沿模型", payload["text"])
+        self.assertIn("output/html/latest/daily.html", payload["text"])
+
+    def test_environment_daily_uses_get_time_func_for_timestamp(self):
+        from datetime import datetime as _dt
+
+        fixed_time = _dt(2026, 1, 15, 9, 0, 0)
+        result = make_env_result()
+        split = _SplitTracker()
+        with mock.patch.object(SENDERS.requests, "post", return_value=_ok_response()) as post:
+            ok = SENDERS.send_to_telegram(
+                bot_token="token", chat_id="chat",
+                report_data={"stats": [], "failed_ids": [], "new_titles": [], "id_to_name": {}},
+                report_type="当日汇总", mode="daily",
+                split_content_func=split,
+                ai_analysis=result,
+                get_time_func=lambda: fixed_time,
+            )
+        self.assertTrue(ok)
+        self.assertEqual(post.call_count, 1)
+        self.assertFalse(split.called)
+        text = post.call_args.kwargs["json"]["text"]
+        self.assertIn("2026-01-15 09:00:00", text)
+
+    def test_environment_daily_renderer_failure_falls_back_to_split(self):
+        result = make_env_result()
+        split = _SplitTracker()
+        with mock.patch.object(
+            FMT, "render_environment_telegram_daily_digest", side_effect=RuntimeError("boom")
+        ), mock.patch.object(SENDERS.requests, "post", return_value=_ok_response()) as post:
+            ok = SENDERS.send_to_telegram(
+                bot_token="token", chat_id="chat",
+                report_data={"stats": [], "failed_ids": [], "new_titles": [], "id_to_name": {}},
+                report_type="当日汇总", mode="daily",
+                split_content_func=split,
+                ai_analysis=result,
+            )
+        self.assertTrue(ok)
+        self.assertTrue(split.called, "daily digest 构造失败应回退完整分批路径")
         self.assertGreaterEqual(post.call_count, 1)
 
 
@@ -462,25 +634,35 @@ class TestCooldownIntegration(unittest.TestCase):
     # ── mode 作用域：cooldown 只作用于实时模式，daily 不受影响 ──
 
     def test_daily_mode_no_candidate_not_silenced(self):
-        # environment + daily：即使没有 alert candidate，也不应被候选 gate 静默
+        # environment + daily：即使没有 realtime alert candidate，也应发送 daily digest
         result = AIAnalysisResult(
             report_style="environment", success=True,
             silence_gap=[{"topic": "外热中静议题", "source_layers": "B"}],
         )
         ok, post, split = self._send(result, self.T0, mode="daily")
         self.assertTrue(ok)
-        self.assertTrue(split.called, "daily 应走完整报告 split 路径，而非 alert brief 候选 gate")
-        self.assertGreaterEqual(post.call_count, 1, "daily 不应被静默")
+        self.assertFalse(split.called, "daily 应走每日简报路径，而非完整 split 路径")
+        self.assertEqual(post.call_count, 1, "daily 不应被静默")
+        self.assertIn("TrendRadar｜每日简报", post.call_args.kwargs["json"]["text"])
 
     def test_daily_mode_does_not_touch_alert_state(self):
         # environment + daily：即使有候选，也不读写 alert_state（cooldown 不影响 daily）
         result = make_env_result()
         ok, post, split = self._send(result, self.T0, mode="daily")
         self.assertTrue(ok)
-        self.assertTrue(split.called)
+        self.assertFalse(split.called)
+        self.assertEqual(post.call_count, 1)
         self.assertEqual(self.backend.get_calls, 0, "daily 不应读取 alert_state")
         self.assertEqual(self.backend.save_calls, 0, "daily 不应写入 alert_state")
         self.assertEqual(self.backend.data, {})
+
+    def test_daily_mode_no_anomaly_still_sends_digest(self):
+        result = AIAnalysisResult(report_style="environment", success=True)
+        ok, post, split = self._send(result, self.T0, mode="daily")
+        self.assertTrue(ok)
+        self.assertFalse(split.called)
+        self.assertEqual(post.call_count, 1)
+        self.assertIn("今日未发现高优先级异常信号", post.call_args.kwargs["json"]["text"])
 
     def test_incremental_mode_applies_cooldown(self):
         import datetime as _dt
