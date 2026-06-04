@@ -356,7 +356,17 @@ notification:
 
     telegram:
       bot_token: ""                   # Telegram Bot Token
-      chat_id: ""                     # Telegram Chat ID
+      chat_id: ""                     # 旧配置：Telegram Chat ID；旧多账号 chat id 也视为 owner
+      # Telegram access control v1:
+      # - chat_id / TELEGRAM_CHAT_ID 继续兼容，并自动视为 owner。
+      # - owner 自动拥有 receiver + command 权限。
+      # - 如果某个 chat 只应接收、不应发命令，请迁移到 receiver_chat_ids，
+      #   不要继续放在旧 chat_id / TELEGRAM_CHAT_ID。
+      owner_chat_ids: ""              # 逗号分隔；最高权限 chat_id 列表
+      receiver_chat_ids: ""           # 逗号分隔；可收到主动推送的 chat_id 列表
+      command_chat_ids: ""            # 逗号分隔；可执行未来入站命令的 chat_id 列表
+      commands_enabled: false         # 本阶段只加载/暴露配置，不实现命令
+      unauthorized_behavior: "ignore" # ignore / reply；非法值回退 ignore
 
     email:
       from: ""                        # 发件人邮箱地址

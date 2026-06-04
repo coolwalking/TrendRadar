@@ -12,6 +12,7 @@ from typing import Dict, Any, Optional
 import yaml
 
 from .config import parse_multi_account_config, validate_paired_configs
+from trendradar.telegram_bot.access import build_telegram_access_config
 from trendradar.utils.time import DEFAULT_TIMEZONE
 
 
@@ -490,6 +491,50 @@ def _load_webhook_config(config_data: Dict) -> Dict:
     slack = channels.get("slack", {})
     generic = channels.get("generic_webhook", {})
 
+    telegram_chat_id = _get_env_str("TELEGRAM_CHAT_ID") or telegram.get("chat_id", "")
+    telegram_owner_chat_ids = (
+        _get_env_str("TELEGRAM_OWNER_CHAT_IDS") or telegram.get("owner_chat_ids", "")
+    )
+    telegram_receiver_chat_ids = (
+        _get_env_str("TELEGRAM_RECEIVER_CHAT_IDS") or telegram.get("receiver_chat_ids", "")
+    )
+    telegram_command_chat_ids = (
+        _get_env_str("TELEGRAM_COMMAND_CHAT_IDS") or telegram.get("command_chat_ids", "")
+    )
+    commands_enabled_env = _get_env_bool("TELEGRAM_COMMANDS_ENABLED")
+    telegram_commands_enabled = (
+        commands_enabled_env
+        if commands_enabled_env is not None
+        else telegram.get("commands_enabled", False)
+    )
+    telegram_unauthorized_behavior = (
+        _get_env_str("TELEGRAM_UNAUTHORIZED_BEHAVIOR")
+        or telegram.get("unauthorized_behavior", "ignore")
+    )
+    telegram_access_raw = {
+        # Legacy TELEGRAM_CHAT_ID, including legacy semicolon-separated multi-account
+        # chat ids, is treated as owner. Owners automatically receive outbound
+        # pushes and can run future commands. Receiver-only chats must be moved
+        # to TELEGRAM_RECEIVER_CHAT_IDS instead of remaining in TELEGRAM_CHAT_ID.
+        "TELEGRAM_CHAT_ID": telegram_chat_id,
+        "TELEGRAM_OWNER_CHAT_IDS": telegram_owner_chat_ids,
+        "TELEGRAM_RECEIVER_CHAT_IDS": telegram_receiver_chat_ids,
+        "TELEGRAM_COMMAND_CHAT_IDS": telegram_command_chat_ids,
+        "TELEGRAM_COMMANDS_ENABLED": telegram_commands_enabled,
+        "TELEGRAM_UNAUTHORIZED_BEHAVIOR": telegram_unauthorized_behavior,
+    }
+    try:
+        telegram_access = build_telegram_access_config(telegram_access_raw)
+    except ValueError as e:
+        # fail-open：Telegram 子配置写错（如 command 白名单越界）不应拖垮整个 config 加载，
+        # 否则飞书/钉钉/邮件等其它渠道也会一起起不来。丢弃越界的 command 白名单后重建，
+        # 保留 owner/receiver 出站能力；commands 本阶段未实现，丢弃无副作用。
+        print(f"[Telegram] access 配置无效，已忽略 command 白名单：{e}")
+        telegram_command_chat_ids = ""
+        telegram_access = build_telegram_access_config(
+            {**telegram_access_raw, "TELEGRAM_COMMAND_CHAT_IDS": ""}
+        )
+
     return {
         # 飞书
         "FEISHU_WEBHOOK_URL": _get_env_str("FEISHU_WEBHOOK_URL") or feishu.get("webhook_url", ""),
@@ -500,7 +545,13 @@ def _load_webhook_config(config_data: Dict) -> Dict:
         "WEWORK_MSG_TYPE": _get_env_str("WEWORK_MSG_TYPE") or wework.get("msg_type", "markdown"),
         # Telegram
         "TELEGRAM_BOT_TOKEN": _get_env_str("TELEGRAM_BOT_TOKEN") or telegram.get("bot_token", ""),
-        "TELEGRAM_CHAT_ID": _get_env_str("TELEGRAM_CHAT_ID") or telegram.get("chat_id", ""),
+        "TELEGRAM_CHAT_ID": telegram_chat_id,
+        "TELEGRAM_OWNER_CHAT_IDS": telegram_owner_chat_ids,
+        "TELEGRAM_RECEIVER_CHAT_IDS": telegram_receiver_chat_ids,
+        "TELEGRAM_COMMAND_CHAT_IDS": telegram_command_chat_ids,
+        "TELEGRAM_COMMANDS_ENABLED": telegram_commands_enabled,
+        "TELEGRAM_UNAUTHORIZED_BEHAVIOR": telegram_access["unauthorized_behavior"],
+        "TELEGRAM_ACCESS": telegram_access,
         # 邮件
         "EMAIL_FROM": _get_env_str("EMAIL_FROM") or email.get("from", ""),
         "EMAIL_PASSWORD": _get_env_str("EMAIL_PASSWORD") or email.get("password", ""),
@@ -544,7 +595,20 @@ def _print_notification_sources(config: Dict) -> None:
         source = "环境变量" if os.environ.get("WEWORK_WEBHOOK_URL") else "配置文件"
         notification_sources.append(f"企业微信({source}, {count}个账号)")
 
-    if config["TELEGRAM_BOT_TOKEN"] and config["TELEGRAM_CHAT_ID"]:
+    telegram_receivers = (config.get("TELEGRAM_ACCESS") or {}).get("receiver_chat_ids", [])
+    has_new_tg_access_targets = bool(
+        config.get("TELEGRAM_OWNER_CHAT_IDS")
+        or config.get("TELEGRAM_RECEIVER_CHAT_IDS")
+    )
+    if config["TELEGRAM_BOT_TOKEN"] and telegram_receivers and has_new_tg_access_targets:
+        tokens = parse_multi_account_config(config["TELEGRAM_BOT_TOKEN"])
+        if tokens:
+            # receiver fan-out 不受 MAX_ACCOUNTS_PER_CHANNEL 截断（dispatcher 会全量发送），
+            # 这里必须显示真实接收者数，避免「日志说 3 个、实际发 10 个」的不一致。
+            count = len(telegram_receivers)
+            token_source = "环境变量" if os.environ.get("TELEGRAM_BOT_TOKEN") else "配置文件"
+            notification_sources.append(f"Telegram({token_source}, {count}个接收者)")
+    elif config["TELEGRAM_BOT_TOKEN"] and config["TELEGRAM_CHAT_ID"]:
         tokens = parse_multi_account_config(config["TELEGRAM_BOT_TOKEN"])
         chat_ids = parse_multi_account_config(config["TELEGRAM_CHAT_ID"])
         valid, count = validate_paired_configs(

@@ -305,12 +305,13 @@ class NewsAnalyzer:
     def _has_notification_configured(self) -> bool:
         """检查是否配置了任何通知渠道"""
         cfg = self.ctx.config
+        telegram_receivers = (cfg.get("TELEGRAM_ACCESS") or {}).get("receiver_chat_ids", [])
         return any(
             [
                 cfg["FEISHU_WEBHOOK_URL"],
                 cfg["DINGTALK_WEBHOOK_URL"],
                 cfg["WEWORK_WEBHOOK_URL"],
-                (cfg["TELEGRAM_BOT_TOKEN"] and cfg["TELEGRAM_CHAT_ID"]),
+                (cfg["TELEGRAM_BOT_TOKEN"] and telegram_receivers),
                 (
                     cfg["EMAIL_FROM"]
                     and cfg["EMAIL_PASSWORD"]
@@ -1944,10 +1945,18 @@ def _run_doctor(config_path: Optional[str] = None) -> bool:
             if values:
                 channel_details.append(f"{name}({min(len(values), max_accounts)}个)")
 
-        # Telegram 配对校验
+        # Telegram 配置校验
         tg_tokens = parse_multi_account_config(config.get("TELEGRAM_BOT_TOKEN", ""))
         tg_chats = parse_multi_account_config(config.get("TELEGRAM_CHAT_ID", ""))
-        if tg_tokens or tg_chats:
+        tg_access = config.get("TELEGRAM_ACCESS") or {}
+        tg_receivers = tg_access.get("receiver_chat_ids", [])
+        has_new_tg_access = bool(
+            config.get("TELEGRAM_OWNER_CHAT_IDS")
+            or config.get("TELEGRAM_RECEIVER_CHAT_IDS")
+        )
+        if tg_tokens and tg_receivers and has_new_tg_access:
+            channel_details.append(f"Telegram({len(tg_receivers)}个接收者)")
+        elif tg_tokens or tg_chats:
             valid, count = validate_paired_configs(
                 {"bot_token": tg_tokens, "chat_id": tg_chats},
                 "Telegram",
@@ -2091,12 +2100,13 @@ def _run_test_notification(config: Dict) -> bool:
 
     try:
         # 检查是否配置了通知渠道
+        telegram_receivers = (config.get("TELEGRAM_ACCESS") or {}).get("receiver_chat_ids", [])
         has_notification = any(
             [
                 config.get("FEISHU_WEBHOOK_URL"),
                 config.get("DINGTALK_WEBHOOK_URL"),
                 config.get("WEWORK_WEBHOOK_URL"),
-                (config.get("TELEGRAM_BOT_TOKEN") and config.get("TELEGRAM_CHAT_ID")),
+                (config.get("TELEGRAM_BOT_TOKEN") and telegram_receivers),
                 (config.get("EMAIL_FROM") and config.get("EMAIL_PASSWORD") and config.get("EMAIL_TO")),
                 (config.get("NTFY_SERVER_URL") and config.get("NTFY_TOPIC")),
                 config.get("BARK_URL"),

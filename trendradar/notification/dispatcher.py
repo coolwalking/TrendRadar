@@ -12,7 +12,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from trendradar.core.config import (
     get_account_at_index,
@@ -20,6 +20,7 @@ from trendradar.core.config import (
     parse_multi_account_config,
     validate_paired_configs,
 )
+from trendradar.telegram_bot.access import build_telegram_access_config
 
 from .senders import (
     send_to_bark,
@@ -38,6 +39,46 @@ from .senders import (
 # 类型检查时导入，运行时不导入（避免循环导入）
 if TYPE_CHECKING:
     from trendradar.ai import AIAnalysisResult, AITranslator
+
+
+class _DeferredAlertStateStore:
+    """Delay alert_state commits until all Telegram receivers have been tried."""
+
+    def __init__(self, store: Any):
+        self._store = store
+        self._pending: List[Tuple[List[Tuple[str, Dict[str, Any]]], Any]] = []
+
+    def get(self, key: str):
+        return self._store.get(key)
+
+    def commit(self, pushed_items: List, now) -> bool:
+        if pushed_items:
+            self._pending.append((list(pushed_items), now))
+        return True
+
+    def flush(self) -> bool:
+        """Commit one deduped topic set after receiver fanout completes."""
+        if not self._pending:
+            return False
+        from trendradar.ai.alert_state import topic_key
+
+        merged = []
+        seen = set()
+        # All receivers in one dispatcher fanout share the same rendered alert round.
+        # Use the first successful send timestamp so cooldown state matches that round,
+        # not the wall-clock time after slower receiver attempts.
+        commit_time = self._pending[0][1]
+        for items, _ in self._pending:
+            for label, item in items:
+                key = topic_key(item.get("topic", ""))
+                dedupe_key = (label, key)
+                if not key or dedupe_key in seen:
+                    continue
+                seen.add(dedupe_key)
+                merged.append((label, item))
+        if not merged:
+            return False
+        return bool(self._store.commit(merged, commit_time))
 
 
 class NotificationDispatcher:
@@ -72,6 +113,23 @@ class NotificationDispatcher:
         self.max_accounts = config.get("MAX_ACCOUNTS_PER_CHANNEL", 3)
         self.translator = translator
         self.storage_backend = storage_backend
+
+    def _telegram_access_config(self) -> Dict[str, Any]:
+        access = self.config.get("TELEGRAM_ACCESS")
+        if access:
+            return access
+        return build_telegram_access_config(
+            {
+                "TELEGRAM_CHAT_ID": self.config.get("TELEGRAM_CHAT_ID", ""),
+                "TELEGRAM_OWNER_CHAT_IDS": self.config.get("TELEGRAM_OWNER_CHAT_IDS", ""),
+                "TELEGRAM_RECEIVER_CHAT_IDS": self.config.get("TELEGRAM_RECEIVER_CHAT_IDS", ""),
+                "TELEGRAM_COMMAND_CHAT_IDS": self.config.get("TELEGRAM_COMMAND_CHAT_IDS", ""),
+                "TELEGRAM_COMMANDS_ENABLED": self.config.get("TELEGRAM_COMMANDS_ENABLED", False),
+                "TELEGRAM_UNAUTHORIZED_BEHAVIOR": self.config.get(
+                    "TELEGRAM_UNAUTHORIZED_BEHAVIOR", "ignore"
+                ),
+            }
+        )
 
     def translate_content(
         self,
@@ -290,8 +348,9 @@ class NotificationDispatcher:
                 ai_analysis, display_regions, standalone_data
             )
 
-        # Telegram（需要配对验证）
-        if self.config.get("TELEGRAM_BOT_TOKEN") and self.config.get("TELEGRAM_CHAT_ID"):
+        # Telegram
+        telegram_receivers = self._telegram_access_config().get("receiver_chat_ids", [])
+        if self.config.get("TELEGRAM_BOT_TOKEN") and telegram_receivers:
             results["telegram"] = self._send_telegram(
                 report_data, report_type, update_info, proxy_url, mode, rss_items, rss_new_items,
                 ai_analysis, display_regions, standalone_data, html_file_path
@@ -527,28 +586,60 @@ class NotificationDispatcher:
         standalone_data: Optional[Dict] = None,
         html_file_path: Optional[str] = None,
     ) -> bool:
-        """发送到 Telegram（多账号，需验证 token 和 chat_id 配对，支持热榜+RSS合并+AI分析+独立展示区）"""
+        """发送到 Telegram（旧多账号兼容；新 receiver 白名单 fanout）"""
         report_data, rss_items, rss_new_items, ai_analysis, standalone_data = self._apply_display_regions(
             report_data, display_regions, rss_items, rss_new_items, ai_analysis, standalone_data
         )
         display_regions = display_regions or {}
 
         telegram_tokens = parse_multi_account_config(self.config["TELEGRAM_BOT_TOKEN"])
-        telegram_chat_ids = parse_multi_account_config(self.config["TELEGRAM_CHAT_ID"])
+        legacy_chat_ids = parse_multi_account_config(self.config.get("TELEGRAM_CHAT_ID", ""))
+        telegram_access = self._telegram_access_config()
+        receiver_chat_ids = list(telegram_access.get("receiver_chat_ids") or [])
 
-        if not telegram_tokens or not telegram_chat_ids:
+        if not telegram_tokens or not receiver_chat_ids:
             return False
 
-        valid, count = validate_paired_configs(
-            {"bot_token": telegram_tokens, "chat_id": telegram_chat_ids},
-            "Telegram",
-            required_keys=["bot_token", "chat_id"],
+        has_new_access_targets = bool(
+            self.config.get("TELEGRAM_OWNER_CHAT_IDS")
+            or self.config.get("TELEGRAM_RECEIVER_CHAT_IDS")
         )
-        if not valid or count == 0:
-            return False
-
-        telegram_tokens = limit_accounts(telegram_tokens, self.max_accounts, "Telegram")
-        telegram_chat_ids = telegram_chat_ids[: len(telegram_tokens)]
+        targets = []
+        if not has_new_access_targets:
+            valid, count = validate_paired_configs(
+                {"bot_token": telegram_tokens, "chat_id": legacy_chat_ids},
+                "Telegram",
+                required_keys=["bot_token", "chat_id"],
+            )
+            if not valid or count == 0:
+                return False
+            telegram_tokens = limit_accounts(telegram_tokens, self.max_accounts, "Telegram")
+            legacy_chat_ids = legacy_chat_ids[: len(telegram_tokens)]
+            targets = list(zip(telegram_tokens, legacy_chat_ids))
+        else:
+            # 新 access 模式：单 bot fan-out。所有 receiver 都由第一个 bot_token 发送，
+            # 不做「多 bot × 多 chat」的配对 routing（那条路径仅在未启用新 owner/receiver
+            # 白名单时保留，见上方 if 分支）。这意味着旧的多 bot 配置一旦叠加新白名单，
+            # 第二个及之后的 bot_token 不再参与发送——若某个 receiver 只在第二个 bot 上
+            # 建立过会话，用第一个 token 发会被 Telegram 拒投。本阶段不扩展多 bot routing，
+            # 仅在下方打印明确告警，由用户决定是否迁移到单 bot。
+            token = next((item for item in telegram_tokens if item), "")
+            if not token:
+                return False
+            non_empty_tokens = [item for item in telegram_tokens if item]
+            if len(non_empty_tokens) > 1:
+                print(
+                    "Telegram 配置了多个 bot_token，但新 owner/receiver 白名单为单 bot fan-out；"
+                    f"将只用第一个 bot_token 发送给全部 {len(receiver_chat_ids)} 个 receiver，"
+                    "其余 bot_token 不参与发送"
+                )
+                if legacy_chat_ids:
+                    print(
+                        "Telegram 同时配置了旧 TELEGRAM_CHAT_ID 多账号配对与新 owner/receiver 白名单；"
+                        "旧的 token↔chat 配对已失效，仅在某 receiver 只在非首个 bot 上建立过会话时"
+                        "才会出现投递失败——如需多 bot 请勿启用新白名单"
+                    )
+            targets = [(token, chat_id) for chat_id in receiver_chat_ids]
 
         # environment 实时提醒的 cooldown 状态存储（仅在启用且有存储后端时构造，惰性加载）。
         # 多账号共享 topic 级状态：同议题对所有账号一次冷却（MVP 取舍）。classic 风格不会触达。
@@ -568,12 +659,11 @@ class NotificationDispatcher:
                 cooldown_minutes=alert_config.get("COOLDOWN_MINUTES", 180),
             )
 
+        deferred_store = _DeferredAlertStateStore(alert_state_store) if alert_state_store else None
         results = []
-        for i in range(len(telegram_tokens)):
-            token = telegram_tokens[i]
-            chat_id = telegram_chat_ids[i]
+        for i, (token, chat_id) in enumerate(targets):
             if token and chat_id:
-                account_label = f"账号{i+1}" if len(telegram_tokens) > 1 else ""
+                account_label = f"接收者{i+1}" if len(targets) > 1 else ""
                 result = send_to_telegram(
                     bot_token=token,
                     chat_id=chat_id,
@@ -593,12 +683,18 @@ class NotificationDispatcher:
                     standalone_data=standalone_data,
                     html_file_path=html_file_path,
                     get_time_func=self.get_time_func,
-                    alert_state_store=alert_state_store,
+                    alert_state_store=deferred_store or alert_state_store,
                     alert_config=alert_config,
                 )
                 results.append(result)
 
-        return any(results) if results else False
+        any_success = any(results) if results else False
+        if any_success and deferred_store is not None:
+            deferred_store.flush()
+        if results and not all(results):
+            failed_count = len([result for result in results if not result])
+            print(f"Telegram {failed_count}/{len(results)} 个接收者发送失败，其它接收者已继续尝试")
+        return any_success
 
     def _send_ntfy(
         self,
