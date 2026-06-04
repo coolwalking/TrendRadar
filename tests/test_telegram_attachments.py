@@ -3,7 +3,7 @@
 
 覆盖：
   A. send_telegram_document 底层函数（成功 / 文件缺失 / 过大 / API 失败 / 网络异常 / 不限大小）
-  B. resolve_report_attachment_path 的 group 映射
+  B. resolve_report_attachment_path / resolve_attachment_kind_for_event 的事件级策略
   C. dispatcher fan-out 接入（开关 / attach_on 闸 / 多 receiver / 失败不影响文本 /
      realtime 静默不附 / realtime 真实推送才附 / cooldown 不受影响 / flush 后才发附件）
   D. loader._load_telegram_attachments_config 默认值与归一化
@@ -144,7 +144,7 @@ class TestSendTelegramDocument(unittest.TestCase):
 
 
 class TestResolveAttachmentPath(unittest.TestCase):
-    def test_group_mapping(self):
+    def test_full_group_mapping(self):
         join = os.path.join
         self.assertEqual(
             SENDERS.resolve_report_attachment_path("output", "daily"),
@@ -156,12 +156,53 @@ class TestResolveAttachmentPath(unittest.TestCase):
                 join("output", "public", "current", "full.html"),
             )
 
+    def test_dashboard_group_mapping(self):
+        join = os.path.join
+        self.assertEqual(
+            SENDERS.resolve_report_attachment_path("output", "daily", "dashboard"),
+            join("output", "public", "daily", "index.html"),
+        )
+        for mode in ("current", "incremental"):
+            self.assertEqual(
+                SENDERS.resolve_report_attachment_path("output", mode, "dashboard"),
+                join("output", "public", "current", "index.html"),
+            )
+
     def test_report_kind_other_falls_back_to_full(self):
-        # 即便传入非 full，也只会拼出 full.html（绝不暴露 state.json/index.html）
+        # 非法 kind 只会回落到 full.html（绝不暴露 state.json/db/log 等）
         self.assertTrue(
             SENDERS.resolve_report_attachment_path("output", "daily", "state").endswith(
                 os.path.join("daily", "full.html")
             )
+        )
+
+    def test_default_event_policy(self):
+        cfg = {"REPORT_KIND": "full"}
+        self.assertEqual(
+            SENDERS.resolve_attachment_kind_for_event(cfg, "realtime_alert"), "dashboard"
+        )
+        self.assertEqual(
+            SENDERS.resolve_attachment_kind_for_event(cfg, "daily_digest"), "full"
+        )
+
+    def test_explicit_event_policy_overrides_default(self):
+        cfg = {
+            "REPORT_KIND_BY_EVENT": {
+                "realtime_alert": "full",
+                "daily_digest": "dashboard",
+            }
+        }
+        self.assertEqual(
+            SENDERS.resolve_attachment_kind_for_event(cfg, "realtime_alert"), "full"
+        )
+        self.assertEqual(
+            SENDERS.resolve_attachment_kind_for_event(cfg, "daily_digest"), "dashboard"
+        )
+
+    def test_invalid_event_policy_falls_back_to_event_default(self):
+        cfg = {"REPORT_KIND_BY_EVENT": {"realtime_alert": "state"}}
+        self.assertEqual(
+            SENDERS.resolve_attachment_kind_for_event(cfg, "realtime_alert"), "dashboard"
         )
 
 
@@ -220,13 +261,13 @@ def _config(receivers="111,222", attachments=None):
 
 
 class TestDispatcherAttachments(unittest.TestCase):
-    def _dispatcher(self, config, backend=None):
+    def _dispatcher(self, config, backend=None, attachment_output_dir="output"):
         return NotificationDispatcher(
             config,
             get_time_func=lambda: datetime(2026, 6, 4, 8, 0, 0),
             split_content_func=_split,
             storage_backend=backend,
-            attachment_output_dir="output",
+            attachment_output_dir=attachment_output_dir,
         )
 
     def _send_realtime(self, dispatcher, ai, mode="current"):
@@ -236,6 +277,16 @@ class TestDispatcherAttachments(unittest.TestCase):
             update_info=None,
             proxy_url=None,
             mode=mode,
+            ai_analysis=ai,
+        )
+
+    def _send_daily(self, dispatcher, ai):
+        return dispatcher._send_telegram(
+            report_data={"stats": [], "failed_ids": [], "new_titles": [], "id_to_name": {}},
+            report_type="全天汇总",
+            update_info=None,
+            proxy_url=None,
+            mode="daily",
             ai_analysis=ai,
         )
 
@@ -287,9 +338,15 @@ class TestDispatcherAttachments(unittest.TestCase):
         self.assertEqual(doc.call_count, 2)
         sent_chats = {c.args[1] for c in doc.call_args_list}
         self.assertEqual(sent_chats, {"111", "222"})
-        # 文件名带 group，不应是 full.html
+        # 默认 realtime_alert 发送 current dashboard。
         for c in doc.call_args_list:
-            self.assertEqual(c.kwargs["filename"], "trendradar-current-20260604-0800.html")
+            self.assertEqual(
+                c.args[2],
+                os.path.join("output", "public", "current", "index.html"),
+            )
+            self.assertEqual(
+                c.kwargs["filename"], "trendradar-current-dashboard-20260604-0800.html"
+            )
 
     def test_realtime_silent_round_does_not_attach(self):
         # 文本返回成功但未 commit（冷却/无候选静默成功）→ had_realtime_alert_items=False
@@ -325,17 +382,100 @@ class TestDispatcherAttachments(unittest.TestCase):
         # daily 不走 realtime gate：deferred_store 为 None，但 daily_digest 仍可附
         with mock.patch.object(DISPATCHER, "send_to_telegram", side_effect=self._fake_text_send(commit=False)), \
              mock.patch.object(DISPATCHER, "send_telegram_document", return_value=True) as doc:
-            d._send_telegram(
-                report_data={"stats": [], "failed_ids": [], "new_titles": [], "id_to_name": {}},
-                report_type="全天汇总",
-                update_info=None,
-                proxy_url=None,
-                mode="daily",
-                ai_analysis=_AI(),
-            )
+            self._send_daily(d, _AI())
         self.assertEqual(doc.call_count, 2)
+        # 默认 daily_digest 发送 daily full。
         for c in doc.call_args_list:
-            self.assertEqual(c.kwargs["filename"], "trendradar-daily-20260604-0800.html")
+            self.assertEqual(
+                c.args[2],
+                os.path.join("output", "public", "daily", "full.html"),
+            )
+            self.assertEqual(
+                c.kwargs["filename"], "trendradar-daily-full-20260604-0800.html"
+            )
+
+    def test_report_kind_by_event_explicit_override(self):
+        cfg = _config(
+            attachments=_attach_cfg(
+                REPORT_KIND_BY_EVENT={
+                    "realtime_alert": "full",
+                    "daily_digest": "dashboard",
+                }
+            )
+        )
+        d = self._dispatcher(cfg, backend=_Backend())
+        with mock.patch.object(DISPATCHER, "send_to_telegram", side_effect=self._fake_text_send(commit=True)), \
+             mock.patch.object(DISPATCHER, "send_telegram_document", return_value=True) as doc:
+            self._send_realtime(d, _AI())
+        self.assertEqual(
+            doc.call_args_list[0].args[2],
+            os.path.join("output", "public", "current", "full.html"),
+        )
+        self.assertIn("current-full", doc.call_args_list[0].kwargs["filename"])
+
+        with mock.patch.object(DISPATCHER, "send_to_telegram", side_effect=self._fake_text_send(commit=False)), \
+             mock.patch.object(DISPATCHER, "send_telegram_document", return_value=True) as doc:
+            self._send_daily(d, _AI())
+        self.assertEqual(
+            doc.call_args_list[0].args[2],
+            os.path.join("output", "public", "daily", "index.html"),
+        )
+        self.assertIn("daily-dashboard", doc.call_args_list[0].kwargs["filename"])
+
+    def test_legacy_report_kind_does_not_override_realtime_default(self):
+        cfg = _config(attachments=_attach_cfg(REPORT_KIND="full"))
+        d = self._dispatcher(cfg, backend=_Backend())
+        with mock.patch.object(DISPATCHER, "send_to_telegram", side_effect=self._fake_text_send(commit=True)), \
+             mock.patch.object(DISPATCHER, "send_telegram_document", return_value=True) as doc:
+            self._send_realtime(d, _AI())
+        self.assertEqual(
+            doc.call_args_list[0].args[2],
+            os.path.join("output", "public", "current", "index.html"),
+        )
+
+    def test_attach_on_filter_excludes_daily(self):
+        cfg = _config(attachments=_attach_cfg(ATTACH_ON=["realtime_alert"]))
+        d = self._dispatcher(cfg, backend=_Backend())
+        with mock.patch.object(DISPATCHER, "send_to_telegram", side_effect=self._fake_text_send(commit=False)), \
+             mock.patch.object(DISPATCHER, "send_telegram_document") as doc:
+            self._send_daily(d, _AI())
+        doc.assert_not_called()
+
+    def test_missing_dashboard_file_warns_without_failing_text(self):
+        cfg = _config(receivers="111")
+        d = self._dispatcher(cfg, backend=_Backend(), attachment_output_dir="missing-output")
+        with mock.patch.object(DISPATCHER, "send_to_telegram", side_effect=self._fake_text_send(commit=True)), \
+             mock.patch("builtins.print") as printed:
+            ok = self._send_realtime(d, _AI())
+        self.assertTrue(ok)
+        self.assertTrue(
+            any("附件文件不存在" in str(call.args[0]) for call in printed.call_args_list)
+        )
+
+    def test_missing_full_file_warns_without_failing_text(self):
+        cfg = _config(receivers="111")
+        d = self._dispatcher(cfg, backend=_Backend(), attachment_output_dir="missing-output")
+        with mock.patch.object(DISPATCHER, "send_to_telegram", side_effect=self._fake_text_send(commit=False)), \
+             mock.patch("builtins.print") as printed:
+            ok = self._send_daily(d, _AI())
+        self.assertTrue(ok)
+        self.assertTrue(
+            any("附件文件不存在" in str(call.args[0]) for call in printed.call_args_list)
+        )
+
+    def test_oversize_dashboard_file_warns_without_failing_text(self):
+        cfg = _config(receivers="111", attachments=_attach_cfg(MAX_FILE_MB=0.0005))
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "public", "current")
+            os.makedirs(path)
+            with open(os.path.join(path, "index.html"), "w", encoding="utf-8") as f:
+                f.write("x" * 2000)
+            d = self._dispatcher(cfg, backend=_Backend(), attachment_output_dir=tmp)
+            with mock.patch.object(DISPATCHER, "send_to_telegram", side_effect=self._fake_text_send(commit=True)), \
+                 mock.patch("builtins.print") as printed:
+                ok = self._send_realtime(d, _AI())
+        self.assertTrue(ok)
+        self.assertTrue(any("附件过大" in str(call.args[0]) for call in printed.call_args_list))
 
     def test_attachments_do_not_add_cooldown_commits_and_run_after_flush(self):
         cfg = _config(receivers="111,222")
@@ -384,6 +524,7 @@ class TestLoaderAttachmentsConfig(unittest.TestCase):
         cfg = LOADER._load_telegram_attachments_config({})
         self.assertEqual(cfg["ENABLED"], False)
         self.assertEqual(cfg["ATTACH_ON"], ["realtime_alert", "daily_digest"])
+        self.assertEqual(cfg["REPORT_KIND_BY_EVENT"], {})
         self.assertEqual(cfg["REPORT_KIND"], "full")
         self.assertEqual(cfg["MAX_FILE_MB"], 8.0)
         self.assertEqual(cfg["FAILURE_BEHAVIOR"], "warn")
@@ -394,11 +535,40 @@ class TestLoaderAttachmentsConfig(unittest.TestCase):
         )
         self.assertEqual(cfg["REPORT_KIND"], "full")
 
-    def test_attach_on_filters_unknown_values(self):
+    def test_report_kind_by_event_normalizes_valid_values(self):
+        cfg = LOADER._load_telegram_attachments_config(
+            {
+                "telegram_attachments": {
+                    "report_kind_by_event": {
+                        "realtime_alert": "full",
+                        "daily_digest": "dashboard",
+                    }
+                }
+            }
+        )
+        self.assertEqual(
+            cfg["REPORT_KIND_BY_EVENT"],
+            {"realtime_alert": "full", "daily_digest": "dashboard"},
+        )
+
+    def test_report_kind_by_event_filters_invalid_values(self):
+        cfg = LOADER._load_telegram_attachments_config(
+            {
+                "telegram_attachments": {
+                    "report_kind_by_event": {
+                        "realtime_alert": "state",
+                        "daily_digest": "full",
+                    }
+                }
+            }
+        )
+        self.assertEqual(cfg["REPORT_KIND_BY_EVENT"], {"daily_digest": "full"})
+
+    def test_attach_on_filters_unknown_and_normalizes_legacy_values(self):
         cfg = LOADER._load_telegram_attachments_config(
             {"telegram_attachments": {"attach_on": ["realtime_alert", "bogus", "daily"]}}
         )
-        self.assertEqual(cfg["ATTACH_ON"], ["realtime_alert"])
+        self.assertEqual(cfg["ATTACH_ON"], ["realtime_alert", "daily_digest"])
 
     def test_failure_behavior_invalid_falls_back_to_warn(self):
         cfg = LOADER._load_telegram_attachments_config(

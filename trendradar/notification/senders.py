@@ -762,22 +762,67 @@ def send_to_telegram(
     return True
 
 
+ATTACHMENT_EVENT_DEFAULTS = {
+    "realtime_alert": "dashboard",
+    "daily_digest": "full",
+}
+ATTACHMENT_REPORT_KINDS = {"dashboard", "full"}
+
+
+def _normalize_attachment_report_kind(value: Any) -> Optional[str]:
+    kind = str(value or "").strip().lower()
+    return kind if kind in ATTACHMENT_REPORT_KINDS else None
+
+
+def resolve_attachment_kind_for_event(cfg: Dict[str, Any], event_name: str) -> str:
+    """Resolve Telegram HTML attachment kind from event-level policy.
+
+    Known event defaults are intentionally event-specific:
+      - realtime_alert -> dashboard
+      - daily_digest   -> full
+
+    Legacy REPORT_KIND is retained only as a compatibility fallback for unknown
+    events. It does not override the built-in defaults for known events.
+    """
+    event = str(event_name or "").strip()
+    default = ATTACHMENT_EVENT_DEFAULTS.get(event)
+
+    policy = cfg.get("REPORT_KIND_BY_EVENT") or cfg.get("report_kind_by_event") or {}
+    if isinstance(policy, dict) and event in policy:
+        kind = _normalize_attachment_report_kind(policy.get(event))
+        if kind:
+            return kind
+        if default:
+            return default
+
+    if default:
+        return default
+
+    legacy = _normalize_attachment_report_kind(
+        cfg.get("REPORT_KIND", cfg.get("report_kind", "full"))
+    )
+    return legacy or "full"
+
+
 def resolve_report_attachment_path(
     output_dir: str, mode: str, report_kind: str = "full"
 ) -> str:
     """解析要作为 Telegram 附件发送的报告文件路径。
 
-    第一版**只**返回发布根的完整报告 public/{group}/full.html：
-      - current / incremental → public/current/full.html
-      - daily               → public/daily/full.html
-    （group 映射与 generator.py / dashboard.py 完全一致）
+    支持发布根下的两类单文件 HTML：
+      - full      → public/{group}/full.html
+      - dashboard → public/{group}/index.html
 
-    report_kind 当前仅支持 "full"；其它取值一律回落到 full.html。
-    本函数物理上只能拼出 full.html，绝不指向 state.json / index.html /
-    db / log / alert_state / secrets。
+    group 映射与 generator.py / dashboard.py 完全一致：
+      - current / incremental → current
+      - daily                 → daily
+
+    本函数只会拼出 public/{group}/full.html 或 public/{group}/index.html，
+    绝不指向 state.json / db / log / alert_state / secrets。
     """
     group = "daily" if mode == "daily" else "current"
-    filename = "full.html"  # v1：仅 full，不暴露 state.json/index.html
+    kind = _normalize_attachment_report_kind(report_kind) or "full"
+    filename = "index.html" if kind == "dashboard" else "full.html"
     return str(Path(output_dir) / "public" / group / filename)
 
 
