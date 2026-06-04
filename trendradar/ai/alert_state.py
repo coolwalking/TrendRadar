@@ -17,7 +17,7 @@ cooldown 语义：
 
 import re
 import unicodedata
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 # 候选标签的"严重度"排序，仅用于 label 升级比较（值越大越值得打断用户）
@@ -136,6 +136,18 @@ def _parse_dt(s: str) -> Optional[datetime]:
         return None
 
 
+def _to_utc_naive(dt: Optional[datetime]) -> Optional[datetime]:
+    """Convert aware datetimes to UTC naive; naive datetimes pass through.
+
+    Returns None if *dt* is None (safe for _parse_dt callers).
+    """
+    if dt is None:
+        return None
+    if dt.tzinfo is not None:
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
+
+
 def build_state_record(label: str, item: Dict[str, Any], now: datetime) -> Dict[str, Any]:
     """生成要写回 alert_state 的单议题 record（pushed_count 由 store.commit 累加）。"""
     return {
@@ -206,10 +218,30 @@ class AlertStateStore:
     backend 为 None（未注入）时退化为纯内存，便于测试与降级。
     """
 
-    def __init__(self, backend: Any = None):
+    _DEFAULT_TTL_DAYS = 14
+    _DEFAULT_COOLDOWN_MINUTES = 180
+
+    def __init__(
+        self,
+        backend: Any = None,
+        state_ttl_days: int = _DEFAULT_TTL_DAYS,
+        cooldown_minutes: int = _DEFAULT_COOLDOWN_MINUTES,
+    ):
         self._backend = backend
         self._topics: Dict[str, Dict[str, Any]] = {}
         self._loaded = False
+        try:
+            self._state_ttl_days = int(state_ttl_days)
+        except (ValueError, TypeError):
+            self._state_ttl_days = self._DEFAULT_TTL_DAYS
+        if self._state_ttl_days <= 0:
+            self._state_ttl_days = 0
+        try:
+            self._cooldown_minutes = int(cooldown_minutes)
+        except (ValueError, TypeError):
+            self._cooldown_minutes = self._DEFAULT_COOLDOWN_MINUTES
+        if self._cooldown_minutes <= 0:
+            self._cooldown_minutes = 0
 
     def _load(self) -> None:
         if self._loaded:
@@ -230,9 +262,38 @@ class AlertStateStore:
         self._load()
         return self._topics.get(key)
 
+    def _prune_expired(self, now: datetime) -> None:
+        """Drop old valid records before saving state.
+
+        The effective TTL is never shorter than cooldown: this prevents a
+        too-small TTL from forgetting a topic that is still inside the cooldown
+        window. Cooldown decisions themselves remain in apply_alert_cooldown().
+        """
+        if self._state_ttl_days <= 0:
+            return
+
+        ttl_seconds = self._state_ttl_days * 24 * 60 * 60
+        effective_seconds = max(ttl_seconds, self._cooldown_minutes * 60)
+        now_cmp = _to_utc_naive(now)
+        cutoff = now_cmp - timedelta(seconds=effective_seconds)
+
+        kept: Dict[str, Dict[str, Any]] = {}
+        for key, rec in self._topics.items():
+            if not isinstance(rec, dict):
+                kept[key] = rec
+                continue
+            last_dt = _to_utc_naive(_parse_dt(str(rec.get("last_pushed_at", ""))))
+            if last_dt is None:
+                kept[key] = rec
+                continue
+            if last_dt >= cutoff:
+                kept[key] = rec
+        self._topics = kept
+
     def commit(self, pushed_items: List[Tuple[str, Dict[str, Any]]], now: datetime) -> bool:
         """记录本轮实际推送成功的候选，并落盘。"""
         self._load()
+        self._prune_expired(now)
         for label, item in pushed_items:
             key = topic_key(item.get("topic", ""))
             if not key:

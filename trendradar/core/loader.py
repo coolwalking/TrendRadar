@@ -349,9 +349,26 @@ def _load_alert_config(config_data: Dict) -> Dict:
         "chinese_only_hot",
     ]
 
+    raw_state_ttl_days = alert_config.get("state_ttl_days", 14)
+    try:
+        state_ttl_days = int(raw_state_ttl_days)
+    except (ValueError, TypeError):
+        state_ttl_days = 14
+    if state_ttl_days < 0:
+        state_ttl_days = 0
+
+    raw_cooldown_minutes = alert_config.get("cooldown_minutes", 180)
+    try:
+        cooldown_minutes = int(raw_cooldown_minutes)
+    except (ValueError, TypeError):
+        cooldown_minutes = 180
+    if cooldown_minutes < 0:
+        cooldown_minutes = 0
+
     return {
         "ENABLED": alert_config.get("enabled", True),
-        "COOLDOWN_MINUTES": alert_config.get("cooldown_minutes", 180),
+        "COOLDOWN_MINUTES": cooldown_minutes,
+        "STATE_TTL_DAYS": state_ttl_days,
         "MAX_ITEMS": alert_config.get("max_items", 3),
         "ALLOW_UPGRADE_BREAK_COOLDOWN": alert_config.get("allow_upgrade_break_cooldown", True),
         "HIGH_HEAT_MIN_RANK": alert_config.get("high_heat_min_rank", 10),

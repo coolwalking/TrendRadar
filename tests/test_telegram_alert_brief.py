@@ -67,6 +67,7 @@ AS = _load_alert_state()
 ALERT_CFG = {
     "ENABLED": True,
     "COOLDOWN_MINUTES": 180,
+    "STATE_TTL_DAYS": 14,
     "MAX_ITEMS": 3,
     "ALLOW_UPGRADE_BREAK_COOLDOWN": True,
     "HIGH_HEAT_MIN_RANK": 10,
@@ -549,7 +550,11 @@ class TestCooldownIntegration(unittest.TestCase):
 
     def _send(self, result, now, mode="current"):
         """模拟一次 cron 运行：每次新建 store（共享同一 backend）。"""
-        store = AS.AlertStateStore(self.backend)
+        store = AS.AlertStateStore(
+            self.backend,
+            state_ttl_days=ALERT_CFG["STATE_TTL_DAYS"],
+            cooldown_minutes=ALERT_CFG["COOLDOWN_MINUTES"],
+        )
         split = _SplitTracker()
         with mock.patch.object(SENDERS.requests, "post", return_value=_ok_response()) as post:
             ok = SENDERS.send_to_telegram(
@@ -572,6 +577,28 @@ class TestCooldownIntegration(unittest.TestCase):
         # 状态已落盘：两个候选 topic_key 入库
         self.assertIn(AS.topic_key("AI前沿模型"), self.backend.data["topics"])
         self.assertIn(AS.topic_key("某明星瓜"), self.backend.data["topics"])
+
+    def test_realtime_commit_prunes_expired_alert_state(self):
+        import datetime as _dt
+
+        old_key = AS.topic_key("长期旧状态")
+        self.backend.data = {
+            "version": 1,
+            "topics": {
+                old_key: AS.build_state_record(
+                    "cross_layer_verified",
+                    {"topic": "长期旧状态", "source_layers": "A/D"},
+                    self.T0 - _dt.timedelta(days=30),
+                ),
+            },
+        }
+
+        ok, post, _ = self._send(make_env_result(), self.T0)
+
+        self.assertTrue(ok)
+        self.assertEqual(post.call_count, 1)
+        self.assertNotIn(old_key, self.backend.data["topics"])
+        self.assertIn(AS.topic_key("AI前沿模型"), self.backend.data["topics"])
 
     def test_within_cooldown_silent(self):  # #2
         import datetime as _dt

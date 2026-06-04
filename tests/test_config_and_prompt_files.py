@@ -6,6 +6,8 @@
 
 import os
 import sys
+import importlib.util
+import types
 import unittest
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -17,6 +19,14 @@ ROOT = _bootstrap.ROOT
 def read(relpath):
     with open(os.path.join(ROOT, relpath), "r", encoding="utf-8") as f:
         return f.read()
+
+
+def load_file(name, relpath):
+    spec = importlib.util.spec_from_file_location(name, os.path.join(ROOT, relpath))
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod
+    spec.loader.exec_module(mod)
+    return mod
 
 
 class TestEnvironmentPromptFile(unittest.TestCase):
@@ -87,6 +97,63 @@ class TestConfigYaml(unittest.TestCase):
     def test_environment_prompt_file_configured(self):
         self.assertIn("environment_prompt_file:", self.text)
         self.assertIn("ai_environment_report_prompt.txt", self.text)
+
+    def test_alert_state_ttl_documented(self):
+        self.assertIn("state_ttl_days: 14", self.text)
+        self.assertIn("缺省/非法=14", self.text)
+        self.assertIn("0 或负数=禁用 TTL 清理", self.text)
+
+
+class TestAlertConfigLoader(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        _bootstrap._ensure_pkg("trendradar")
+        _bootstrap._ensure_pkg("trendradar.core")
+        _bootstrap._ensure_pkg("trendradar.utils")
+        load_file("trendradar.core.config", "trendradar/core/config.py")
+        if "trendradar.utils.time" not in sys.modules:
+            time_mod = types.ModuleType("trendradar.utils.time")
+            time_mod.DEFAULT_TIMEZONE = "Asia/Shanghai"
+            sys.modules["trendradar.utils.time"] = time_mod
+        if "yaml" not in sys.modules and importlib.util.find_spec("yaml") is None:
+            yaml_mod = types.ModuleType("yaml")
+            yaml_mod.safe_load = lambda *_args, **_kwargs: {}
+            sys.modules["yaml"] = yaml_mod
+        cls.loader = load_file("trendradar.core.loader", "trendradar/core/loader.py")
+
+    def test_state_ttl_default_is_14(self):
+        cfg = self.loader._load_alert_config({})
+        self.assertEqual(cfg["STATE_TTL_DAYS"], 14)
+
+    def test_state_ttl_positive_integer_loaded(self):
+        cfg = self.loader._load_alert_config({"alert": {"state_ttl_days": 30}})
+        self.assertEqual(cfg["STATE_TTL_DAYS"], 30)
+
+    def test_state_ttl_invalid_falls_back_to_14(self):
+        cfg = self.loader._load_alert_config({"alert": {"state_ttl_days": "bad"}})
+        self.assertEqual(cfg["STATE_TTL_DAYS"], 14)
+
+    def test_state_ttl_zero_and_negative_disable_ttl(self):
+        zero = self.loader._load_alert_config({"alert": {"state_ttl_days": 0}})
+        negative = self.loader._load_alert_config({"alert": {"state_ttl_days": -3}})
+        self.assertEqual(zero["STATE_TTL_DAYS"], 0)
+        self.assertEqual(negative["STATE_TTL_DAYS"], 0)
+
+    def test_cooldown_minutes_default_is_180(self):
+        cfg = self.loader._load_alert_config({})
+        self.assertEqual(cfg["COOLDOWN_MINUTES"], 180)
+
+    def test_cooldown_minutes_positive_integer_loaded(self):
+        cfg = self.loader._load_alert_config({"alert": {"cooldown_minutes": 60}})
+        self.assertEqual(cfg["COOLDOWN_MINUTES"], 60)
+
+    def test_cooldown_minutes_invalid_falls_back_to_180(self):
+        cfg = self.loader._load_alert_config({"alert": {"cooldown_minutes": "bad"}})
+        self.assertEqual(cfg["COOLDOWN_MINUTES"], 180)
+
+    def test_cooldown_minutes_negative_disables(self):
+        cfg = self.loader._load_alert_config({"alert": {"cooldown_minutes": -5}})
+        self.assertEqual(cfg["COOLDOWN_MINUTES"], 0)
 
 
 class TestMainPipelineSource(unittest.TestCase):
