@@ -7,6 +7,7 @@
 数据流程：下载当天 SQLite → 合并新数据 → 上传回远程
 """
 
+import json
 import pytz
 import re
 import shutil
@@ -132,6 +133,41 @@ class RemoteStorageBackend(SQLiteStorageMixin, StorageBackend):
     @property
     def supports_txt(self) -> bool:
         return self.enable_txt
+
+    # ========================================
+    # 实时异常提醒状态（桶内单一对象，非按天分区）
+    # ========================================
+
+    _ALERT_STATE_KEY = "alert_state.json"
+
+    def get_alert_state(self) -> Dict:
+        if not self._check_object_exists(self._ALERT_STATE_KEY):
+            return {}
+        try:
+            response = self.s3_client.get_object(
+                Bucket=self.bucket_name, Key=self._ALERT_STATE_KEY
+            )
+            body = response["Body"].read()
+            data = json.loads(body.decode("utf-8"))
+            return data if isinstance(data, dict) else {}
+        except Exception as e:
+            print(f"[远程存储] 读取 alert_state 失败（按空状态处理）: {e}")
+            return {}
+
+    def save_alert_state(self, state: Dict) -> bool:
+        try:
+            body = json.dumps(state, ensure_ascii=False, indent=2).encode("utf-8")
+            self.s3_client.put_object(
+                Bucket=self.bucket_name,
+                Key=self._ALERT_STATE_KEY,
+                Body=body,
+                ContentLength=len(body),
+                ContentType="application/json",
+            )
+            return True
+        except Exception as e:
+            print(f"[远程存储] 保存 alert_state 失败: {e}")
+            return False
 
     # ========================================
     # SQLiteStorageMixin 抽象方法实现

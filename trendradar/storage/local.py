@@ -5,6 +5,8 @@
 使用 SQLite 作为主存储，支持可选的 TXT 快照和 HTML 报告
 """
 
+import json
+import os
 import sqlite3
 import shutil
 import pytz
@@ -62,6 +64,39 @@ class LocalStorageBackend(SQLiteStorageMixin, StorageBackend):
     @property
     def supports_txt(self) -> bool:
         return self.enable_txt
+
+    # ========================================
+    # 实时异常提醒状态（单文件，非按天分区）
+    # ========================================
+
+    def _alert_state_path(self) -> Path:
+        return self.data_dir / "alert_state.json"
+
+    def get_alert_state(self) -> Dict:
+        path = self._alert_state_path()
+        if not path.exists():
+            return {}
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return data if isinstance(data, dict) else {}
+        except Exception as e:
+            print(f"[存储] 读取 alert_state 失败（按空状态处理）: {e}")
+            return {}
+
+    def save_alert_state(self, state: Dict) -> bool:
+        path = self._alert_state_path()
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            # 原子写：先写临时文件再 rename，避免并发/崩溃留下半截 JSON
+            tmp = path.with_suffix(".json.tmp")
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(state, f, ensure_ascii=False, indent=2)
+            os.replace(tmp, path)
+            return True
+        except Exception as e:
+            print(f"[存储] 保存 alert_state 失败: {e}")
+            return False
 
     # ========================================
     # SQLiteStorageMixin 抽象方法实现

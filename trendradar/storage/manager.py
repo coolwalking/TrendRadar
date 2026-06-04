@@ -6,7 +6,7 @@
 """
 
 import os
-from typing import Optional
+from typing import Dict, Optional
 
 from trendradar.storage.base import StorageBackend, NewsData, RSSData
 from trendradar.utils.time import DEFAULT_TIMEZONE
@@ -288,6 +288,16 @@ class StorageManager:
     def record_period_execution(self, date_str: str, period_key: str, action: str) -> bool:
         """记录时间段的 action 执行"""
         return self.get_backend().record_period_execution(date_str, period_key, action)
+
+    # === 实时异常提醒状态 ===
+
+    def get_alert_state(self) -> Dict:
+        """读取实时异常提醒状态（cooldown / 去重 / 升级再推）"""
+        return self.get_backend().get_alert_state()
+
+    def save_alert_state(self, state: Dict) -> bool:
+        """保存实时异常提醒状态"""
+        return self.get_backend().save_alert_state(state)
 
     # === AI 智能筛选存储操作 ===
 
