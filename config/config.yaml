@@ -537,6 +537,7 @@ ai_analysis:
 alert:
   enabled: true                       # 总开关；false = 退回上一阶段行为（选到候选即推，无冷却）
   cooldown_minutes: 180               # 同一议题（topic_key）的冷却窗口（分钟）内不重复推
+  state_ttl_days: 14                  # alert_state topic 状态保留天数；缺省/非法=14，0 或负数=禁用 TTL 清理
   max_items: 3                        # 单轮最多推送的异常信号条数
   allow_upgrade_break_cooldown: true  # 发生升级时是否可突破冷却再推
 
