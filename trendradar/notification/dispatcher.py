@@ -145,12 +145,15 @@ class NotificationDispatcher:
                     titles_to_translate.append(item.get("title", ""))
                     title_locations.append(("standalone_platforms", plat_idx, item_idx))
 
-            # 6. 独立展示区 - RSS 源（跳过已翻译的）
-            if not skip_rss:
-                for feed_idx, feed in enumerate(standalone_data.get("rss_feeds", [])):
-                    for item_idx, item in enumerate(feed.get("items", [])):
-                        titles_to_translate.append(item.get("title", ""))
-                        title_locations.append(("standalone_rss", feed_idx, item_idx))
+            # 6. 独立展示区 - RSS 源
+            # 注意：standalone 的 rss_feeds 与 rss_items 是两套独立数据。__main__ 的预翻译
+            # 调用未传入 standalone_data，因此 standalone 的 rss_feeds 从不会在上游被翻译。
+            # skip_rss 仅用于避免 rss_items / rss_new_items 被重复翻译，不应作用于 standalone，
+            # 否则当 ai_translation 启用 + 独立展示区含国外 RSS 源时，其标题在推送中永远不被翻译。
+            for feed_idx, feed in enumerate(standalone_data.get("rss_feeds", [])):
+                for item_idx, item in enumerate(feed.get("items", [])):
+                    titles_to_translate.append(item.get("title", ""))
+                    title_locations.append(("standalone_rss", feed_idx, item_idx))
 
         if not titles_to_translate:
             print("[翻译] 没有需要翻译的内容")
