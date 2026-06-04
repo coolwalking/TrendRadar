@@ -219,6 +219,18 @@ class TestBuildState(unittest.TestCase):
         self.assertEqual(state["report_style"], "none")
         json.dumps(state, ensure_ascii=False)
 
+    def test_daily_group_mapping(self):
+        # 固化 mode→group 契约：daily 路径保留 mode='daily' 且归入 group='daily'。
+        state = DASH.build_dashboard_state(make_env_result(), META, NOW, mode="daily")
+        self.assertEqual(state["mode"], "daily")
+        self.assertEqual(state["group"], "daily")
+
+    def test_incremental_maps_to_current_group(self):
+        # current/incremental 同归 current group，但保留各自原始 mode。
+        state = DASH.build_dashboard_state(make_env_result(), META, NOW, mode="incremental")
+        self.assertEqual(state["mode"], "incremental")
+        self.assertEqual(state["group"], "current")
+
 
 class TestWriteDashboardLayout(unittest.TestCase):
     def setUp(self):
