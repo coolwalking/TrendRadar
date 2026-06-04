@@ -334,6 +334,32 @@ def _load_ai_analysis_config(config_data: Dict) -> Dict:
     }
 
 
+def _load_alert_config(config_data: Dict) -> Dict:
+    """加载实时异常提醒门控配置（cooldown / 去重 / 升级再推）。
+
+    仅作用于 environment 风格的自动推送（alert layer）：
+    不影响 daily_brief 内容、不影响 classic report_style、不影响 HTML、不影响其它逻辑。
+    默认值保守克制。
+    """
+    alert_config = config_data.get("alert", {}) or {}
+
+    notify_labels = alert_config.get("notify_labels") or [
+        "cross_layer_verified",
+        "high_heat_unverified",
+        "chinese_only_hot",
+    ]
+
+    return {
+        "ENABLED": alert_config.get("enabled", True),
+        "COOLDOWN_MINUTES": alert_config.get("cooldown_minutes", 180),
+        "MAX_ITEMS": alert_config.get("max_items", 3),
+        "ALLOW_UPGRADE_BREAK_COOLDOWN": alert_config.get("allow_upgrade_break_cooldown", True),
+        "HIGH_HEAT_MIN_RANK": alert_config.get("high_heat_min_rank", 10),
+        "HIGH_HEAT_MIN_PLATFORMS": alert_config.get("high_heat_min_platforms", 2),
+        "NOTIFY_LABELS": list(notify_labels),
+    }
+
+
 def _load_ai_translation_config(config_data: Dict) -> Dict:
     """加载 AI 翻译配置（功能配置，模型配置见 _load_ai_config）"""
     trans_config = config_data.get("ai_translation", {})
@@ -628,6 +654,9 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
 
     # AI 翻译配置
     config["AI_TRANSLATION"] = _load_ai_translation_config(config_data)
+
+    # 实时异常提醒门控配置（cooldown / 去重 / 升级再推，仅作用于 environment 自动推送）
+    config["ALERT"] = _load_alert_config(config_data)
 
     # AI 智能筛选配置
     config["AI_FILTER"] = _load_ai_filter_config(config_data)
