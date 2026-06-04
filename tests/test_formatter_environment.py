@@ -145,6 +145,17 @@ class TestEnvironmentRendering(unittest.TestCase):
         self.assertIn("传播标题 &lt;script&gt;", out)
         self.assertIn("最大证据缺口", out)
 
+    def test_html_evidence_panel_renders_without_source_links(self):
+        # source_links 为空时：证据面板仍渲染，"抓取出处"块被跳过，证据缺口照常给出
+        result = make_env_result()
+        result.cross_layer_verified[0]["evidence_detail"]["source_links"] = []
+        out = FMT.render_ai_analysis_html_rich(result)
+        self.assertIn('<details class="env-evidence"', out)
+        self.assertNotIn("<h5>抓取出处</h5>", out)
+        self.assertNotIn("链接仅表示系统抓到的传播或背景来源，不构成事实确认。", out)
+        self.assertIn("最大证据缺口", out)
+        self.assertIn("缺少可展示的抓取出处链接。", out)
+
     def test_telegram_escapes_html(self):
         # telegram 渲染应对正文做 HTML 转义（不抛异常且产出文本）
         out = FMT.render_ai_analysis_telegram(self.result)

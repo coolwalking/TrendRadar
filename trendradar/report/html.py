@@ -3530,7 +3530,10 @@ def render_html_content(
                                                         var href = a ? (a.href || '') : '';
                                                         var srcMeta = src.querySelector('span');
                                                         var sourceLine = srcTitle;
-                                                        if (href) sourceLine = '[' + srcTitle.replace(/[\\[\\]]/g, '') + '](' + href + ')';
+                                                        if (href) {
+                                                            var safeHref = href.replace(/\\(/g, '%28').replace(/\\)/g, '%29');
+                                                            sourceLine = '[' + srcTitle.replace(/[\\[\\]]/g, '') + '](' + safeHref + ')';
+                                                        }
                                                         if (srcMeta) sourceLine += '  `' + srcMeta.textContent.trim() + '`';
                                                         if (sourceLine) lines.push('    - ' + sourceLine);
                                                     });

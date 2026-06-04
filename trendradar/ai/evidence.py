@@ -325,7 +325,8 @@ def _pick_source_links(titles: List[Dict], resolver, limit: int = 5) -> List[Dic
         url = _title_url(t)
         if not title or not url:
             continue
-        key = url or f"{t.get('source_name', t.get('feed_name', ''))}:{title}"
+        # url 在上面已保证非空；严格按 URL 去重
+        key = url
         if key in seen:
             continue
         seen.add(key)
