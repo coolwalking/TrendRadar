@@ -29,7 +29,7 @@ from urllib.parse import urlparse
 
 import requests
 
-from .batch import add_batch_headers, get_max_batch_header_size
+from .batch import add_batch_headers, get_max_batch_header_size, truncate_at_line_boundary
 from .formatters import convert_markdown_to_mrkdwn, strip_markdown
 
 
@@ -488,6 +488,8 @@ def send_to_telegram(
     ai_analysis: Any = None,
     display_regions: Optional[Dict] = None,
     standalone_data: Optional[Dict] = None,
+    html_file_path: Optional[str] = None,
+    get_time_func: Optional[Callable] = None,
 ) -> bool:
     """
     发送到 Telegram（支持分批发送，支持热榜+RSS合并+独立展示区）
@@ -506,6 +508,8 @@ def send_to_telegram(
         split_content_func: 内容分批函数
         rss_items: RSS 统计条目列表（可选，用于合并推送）
         rss_new_items: RSS 新增条目列表（可选，用于新增区块）
+        html_file_path: HTML 报告路径（environment alert brief 用于"完整报告"链接）
+        get_time_func: 获取当前时间的函数（environment alert brief 时间戳，统一时区）
 
     Returns:
         bool: 发送是否成功
@@ -519,6 +523,59 @@ def send_to_telegram(
 
     # 日志前缀
     log_prefix = f"Telegram{account_label}" if account_label else "Telegram"
+
+    # === environment 风格：走异常提醒 alert brief 单条路径（不进通用分批器）===
+    # Telegram 自动推送在 environment 下是 alert layer：只回答"有没有值得打断用户的异常信号"，
+    # HTML 报告仍负责完整阅读与证据展开。classic 风格保持下方原 split_content_func 逻辑。
+    report_style = getattr(ai_analysis, "report_style", "classic") if ai_analysis else "classic"
+    if ai_analysis and getattr(ai_analysis, "success", False) and report_style == "environment":
+        from trendradar.ai.formatter import (
+            render_environment_telegram_alert_brief,
+            select_environment_alert_items,
+        )
+
+        items = select_environment_alert_items(ai_analysis, max_items=3)
+        if not items:
+            # 无候选：静默成功，不发送消息（"暂无异常"不主动打断用户，留给未来手动 /now）
+            print(f"{log_prefix}本轮无异常提醒候选，跳过推送 [{report_type}]")
+            return True
+
+        now = get_time_func() if get_time_func else None
+        text = render_environment_telegram_alert_brief(
+            ai_analysis,
+            items,
+            report_type=report_type,
+            mode=mode,
+            html_file_path=html_file_path,
+            now=now,
+        )
+        # 单条消息：接近 Telegram 限制时按行截断，绝不调用通用分批器拆成多批
+        # 上限取 min(batch_size, 3900)，留出余量避免逼近 Telegram 单条 4096 上限
+        text = truncate_at_line_boundary(text, min(batch_size, 3900))
+
+        payload = {
+            "chat_id": chat_id,
+            "text": text,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True,
+        }
+        try:
+            response = requests.post(
+                url, headers=headers, json=payload, proxies=proxies, timeout=30
+            )
+            if response.status_code == 200 and response.json().get("ok"):
+                print(f"{log_prefix}异常提醒发送成功（{len(items)} 个信号）[{report_type}]")
+                return True
+            description = ""
+            try:
+                description = response.json().get("description", "")
+            except Exception:
+                description = f"状态码：{response.status_code}"
+            print(f"{log_prefix}异常提醒发送失败 [{report_type}]，错误：{description}")
+            return False
+        except Exception as e:
+            print(f"{log_prefix}异常提醒发送出错 [{report_type}]：{e}")
+            return False
 
     # 渲染 AI 分析内容并提取统计数据
     ai_content = _render_ai_analysis(ai_analysis, "telegram") if ai_analysis else None
