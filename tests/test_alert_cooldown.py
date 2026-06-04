@@ -253,6 +253,131 @@ class TestAlertStateStore(unittest.TestCase):
         self.assertEqual(saved.get("version"), 1)
         self.assertIn(AS.topic_key("落盘议题"), saved["topics"])
 
+    def test_commit_prunes_expired_valid_records_before_save(self):
+        saved = {}
+        fresh = item("新鲜旧议题")
+        old = item("过期旧议题")
+
+        class FakeBackend:
+            def get_alert_state(self):
+                return {
+                    "version": 1,
+                    "topics": {
+                        AS.topic_key("新鲜旧议题"): state_from(
+                            "cross_layer_verified",
+                            fresh,
+                            T0 - datetime.timedelta(days=13),
+                        ),
+                        AS.topic_key("过期旧议题"): state_from(
+                            "cross_layer_verified",
+                            old,
+                            T0 - datetime.timedelta(days=15),
+                        ),
+                        "bad-ts": {"last_pushed_at": "not-a-date"},
+                        "legacy-list": ["legacy", "malformed"],
+                    },
+                }
+
+            def save_alert_state(self, data):
+                saved.update(data)
+                return True
+
+        store = AS.AlertStateStore(
+            backend=FakeBackend(), state_ttl_days=14, cooldown_minutes=180,
+        )
+        store.commit([("cross_layer_verified", item("本轮新议题"))], T0)
+
+        topics = saved["topics"]
+        self.assertIn(AS.topic_key("新鲜旧议题"), topics)
+        self.assertNotIn(AS.topic_key("过期旧议题"), topics)
+        self.assertIn(AS.topic_key("本轮新议题"), topics)
+        self.assertIn("bad-ts", topics)       # malformed records fail-open 保留
+        self.assertIn("legacy-list", topics)  # legacy malformed records 保留
+
+    def test_state_ttl_zero_disables_prune(self):
+        saved = {}
+        old = item("很旧议题")
+
+        class FakeBackend:
+            def get_alert_state(self):
+                return {
+                    "topics": {
+                        AS.topic_key("很旧议题"): state_from(
+                            "cross_layer_verified",
+                            old,
+                            T0 - datetime.timedelta(days=365),
+                        ),
+                    },
+                }
+
+            def save_alert_state(self, data):
+                saved.update(data)
+                return True
+
+        store = AS.AlertStateStore(
+            backend=FakeBackend(), state_ttl_days=0, cooldown_minutes=180,
+        )
+        store.commit([], T0)
+
+        self.assertIn(AS.topic_key("很旧议题"), saved["topics"])
+
+    def test_effective_ttl_not_shorter_than_cooldown_keeps_topic_still_in_cooldown(self):
+        # effective TTL = max(TTL, cooldown) 只防止过短 TTL 破坏 cooldown 语义；
+        # cooldown 是否抑制推送仍由 apply_alert_cooldown 单独判断。
+        saved = {}
+        it = item("长冷却议题")
+
+        class FakeBackend:
+            def get_alert_state(self):
+                return {
+                    "topics": {
+                        AS.topic_key("长冷却议题"): state_from(
+                            "cross_layer_verified",
+                            it,
+                            T0 - datetime.timedelta(hours=36),
+                        ),
+                    },
+                }
+
+            def save_alert_state(self, data):
+                saved.update(data)
+                return True
+
+        store = AS.AlertStateStore(
+            backend=FakeBackend(),
+            state_ttl_days=1,
+            cooldown_minutes=48 * 60,
+        )
+        store.commit([], T0)
+
+        self.assertIn(AS.topic_key("长冷却议题"), saved["topics"])
+
+    def test_expired_same_topic_starts_fresh_pushed_count(self):
+        saved = {}
+        it = item("重新出现议题")
+        expired = state_from(
+            "cross_layer_verified",
+            it,
+            T0 - datetime.timedelta(days=30),
+        )
+        expired["pushed_count"] = 9
+
+        class FakeBackend:
+            def get_alert_state(self):
+                return {"topics": {AS.topic_key("重新出现议题"): expired}}
+
+            def save_alert_state(self, data):
+                saved.update(data)
+                return True
+
+        store = AS.AlertStateStore(
+            backend=FakeBackend(), state_ttl_days=14, cooldown_minutes=180,
+        )
+        store.commit([("cross_layer_verified", it)], T0)
+
+        rec = saved["topics"][AS.topic_key("重新出现议题")]
+        self.assertEqual(rec["pushed_count"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()
