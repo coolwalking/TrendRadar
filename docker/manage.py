@@ -14,8 +14,39 @@ from datetime import datetime
 
 # Web 服务器配置
 WEBSERVER_PORT = int(os.environ.get("WEBSERVER_PORT", "8080"))
-WEBSERVER_DIR = "/app/output"
+# 只服务发布根 public/，把 db / alert_state.json / log 等敏感产物隔离在服务根之外。
+WEBSERVER_DIR = "/app/output/public"
 WEBSERVER_PID_FILE = "/tmp/webserver.pid"
+
+# 盘面尚未生成时的占位首页（首次启动 / cron 尚未跑过时返回，避免 404 或启动报错）。
+_WEBSERVER_PLACEHOLDER_HTML = """<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="30">
+<meta name="robots" content="noindex, nofollow">
+<title>TrendRadar</title>
+<style>body{margin:0;padding:48px 16px;background:#0f1115;color:#e6e6e6;
+font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",
+"Microsoft YaHei",sans-serif;text-align:center;line-height:1.7;}</style>
+</head>
+<body>
+<h1>TrendRadar</h1>
+<p>盘面尚未生成，请等待首次运行 / 定时任务完成。</p>
+<p style="color:#8a909a;font-size:13px;">本页每 30 秒自动刷新。</p>
+</body>
+</html>"""
+
+
+def _ensure_webserver_root():
+    """确保发布根存在；缺首页时写占位页，保证首次启动可访问。"""
+    root = Path(WEBSERVER_DIR)
+    root.mkdir(parents=True, exist_ok=True)
+    index_file = root / "index.html"
+    if not index_file.exists():
+        index_file.write_text(_WEBSERVER_PLACEHOLDER_HTML, encoding="utf-8")
+        print(f"  📄 写入占位首页: {index_file}")
 def get_timestamp():
     """获取当前时间戳字符串"""
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -572,10 +603,8 @@ def start_webserver():
             print(f"  ⚠️ 清理旧的 PID 文件: {e}")
             _cleanup_stale_pid()
 
-    # 检查目录是否存在
-    if not Path(WEBSERVER_DIR).exists():
-        print(f"  ❌ 目录不存在: {WEBSERVER_DIR}")
-        return
+    # 确保发布根存在并具备可访问首页（首次启动 dashboard 尚未生成时也不报错）
+    _ensure_webserver_root()
 
     try:
         # 启动 HTTP 服务器
