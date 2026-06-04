@@ -569,25 +569,37 @@ alert:
 
 
 # ===============================================================
-# 9b. Telegram HTML 报告附件（增强项，默认关闭）
+# 9b. Telegram HTML 附件（增强项，默认关闭）
 #
-# 文本推送成功后，可选地把发布根的完整报告作为 document 附件发给 receiver。
+# 文本推送成功后，可选地把事件对应的发布根 HTML 作为 document 附件发给 receiver。
 # 重要语义：
 #   - 附件失败【永远不会】影响文本推送结果；failure_behavior 只控制日志强度。
-#   - 第一版只发送 public/{current|daily}/full.html，
-#     不发送 state.json / index.html / db / log / alert_state / secrets。
+#   - 附件只发送 public/{current|daily}/index.html 或 full.html，
+#     不发送 state.json / db / log / alert_state / secrets。
 #   - 多 receiver 时，每个文本发送成功的 receiver 都会单独收到附件。
+#   - dashboard 作为 Telegram 单文件附件时，内部 full.html 相对链接可能不可用；
+#     这是当前已知限制，本轮不改 dashboard HTML。
 # ===============================================================
 telegram_attachments:
   enabled: false                      # 总开关，默认关闭
   # 哪些推送成功后附带 HTML（均要求 environment 风格，classic 不附附件）：
   #   - realtime_alert：current/incremental 且本轮真的推了 alert
   #   - daily_digest  ：environment 每日简报（指 environment daily digest，不是所有 mode=daily）
+  # 旧写法 realtime / daily 仍会兼容归一化，但正式取值请使用 realtime_alert / daily_digest。
   # 空列表 [] = 禁用附件（无可触发事件，等效于 enabled: false）。
   attach_on:
     - realtime_alert
     - daily_digest
-  report_kind: full                   # v1 仅支持 full（= public/{group}/full.html）
+  # 按事件选择附件类型。未配置时使用内置默认：
+  #   - realtime_alert → dashboard → public/current/index.html
+  #   - daily_digest   → full      → public/daily/full.html
+  # 可选值：dashboard / full。
+  report_kind_by_event:
+    realtime_alert: dashboard
+    daily_digest: full
+  # legacy/deprecated：旧全局字段，仅为兼容保留；不再覆盖 realtime_alert / daily_digest
+  # 的内置默认策略。新配置请使用 report_kind_by_event。
+  report_kind: full
   max_file_mb: 8                      # 超过则跳过该附件并记日志（<=0 表示不检查大小）
   failure_behavior: warn              # warn=失败打 ⚠️ 日志；silent=仅普通日志。两者都不影响文本推送结果
 

@@ -23,6 +23,7 @@ from trendradar.core.config import (
 from trendradar.telegram_bot.access import build_telegram_access_config
 
 from .senders import (
+    resolve_attachment_kind_for_event,
     resolve_report_attachment_path,
     send_telegram_document,
     send_to_bark,
@@ -744,11 +745,12 @@ class NotificationDispatcher:
         proxy_url: Optional[str],
         had_realtime_alert_items: bool,
     ) -> None:
-        """文本推送成功后，可选地把 public/{group}/full.html 作为附件发给各 receiver。
+        """文本推送成功后，可选地把事件对应 HTML 作为附件发给各 receiver。
 
         - 仅 environment 风格触发（classic 一律不附附件）；
         - realtime_alert：current/incremental 且本轮真的推了 alert（had_realtime_alert_items）；
         - daily_digest ：environment 每日简报（mode==daily）；
+        - 附件类型按事件选择：realtime_alert 默认 dashboard，daily_digest 默认 full；
         - 仅对文本发送成功的 receiver 附 HTML；
         - 任何附件失败都只记录日志，绝不改变文本推送结果，也绝不触碰 alert_state。
         """
@@ -759,16 +761,18 @@ class NotificationDispatcher:
         attach_on = set(cfg.get("ATTACH_ON") or [])
         is_env = report_style == "environment"
         eligible = False
+        event_name = ""
         if is_env and mode in ("current", "incremental"):
-            eligible = "realtime_alert" in attach_on and had_realtime_alert_items
+            event_name = "realtime_alert"
+            eligible = event_name in attach_on and had_realtime_alert_items
         elif is_env and mode == "daily":
-            eligible = "daily_digest" in attach_on
+            event_name = "daily_digest"
+            eligible = event_name in attach_on
         if not eligible:
             return
 
-        path = resolve_report_attachment_path(
-            self.attachment_output_dir, mode, cfg.get("REPORT_KIND", "full")
-        )
+        report_kind = resolve_attachment_kind_for_event(cfg, event_name)
+        path = resolve_report_attachment_path(self.attachment_output_dir, mode, report_kind)
 
         group = "daily" if mode == "daily" else "current"
         ts = ""
@@ -777,7 +781,7 @@ class NotificationDispatcher:
                 ts = self.get_time_func().strftime("%Y%m%d-%H%M")
             except Exception:
                 ts = ""
-        filename = f"trendradar-{group}{('-' + ts) if ts else ''}.html"
+        filename = f"trendradar-{group}-{report_kind}{('-' + ts) if ts else ''}.html"
 
         failure_behavior = cfg.get("FAILURE_BEHAVIOR", "warn")
         max_file_mb = cfg.get("MAX_FILE_MB", 8)
