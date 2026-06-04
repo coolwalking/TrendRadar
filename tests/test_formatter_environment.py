@@ -36,6 +36,25 @@ def make_env_result():
             "verification_status": EV.LABELS["cross_layer_verified"]["verification_status"],
             "factual_boundary": EV.LABELS["cross_layer_verified"]["factual_boundary"],
             "sentiment_flag": False,
+            "evidence_detail": {
+                "label": "cross_layer_verified",
+                "source_tiers_present": ["A", "D"],
+                "sources_by_tier": {"A": ["OpenAI News"], "D": ["微博"]},
+                "source_links": [{
+                    "title": "OpenAI <ships>",
+                    "url": "https://example.com/openai?x=1&y=2",
+                    "source": "OpenAI News",
+                    "tier": "A",
+                    "rank": 1,
+                    "time": "2026-06-04 09:00",
+                }],
+                "sample_titles": [{
+                    "title": "传播标题 <script>",
+                    "source": "微博",
+                    "tier": "D",
+                    "trend": "升温",
+                }],
+            },
         }],
         high_heat_unverified=[{
             "topic": "某明星瓜", "summary": "出现关于某事的传播", "analysis": "仅 D 层",
@@ -112,12 +131,27 @@ class TestEnvironmentRendering(unittest.TestCase):
         self.assertIn('class="env-radar-grid"', out)
         self.assertIn('class="env-item"', out)
         self.assertIn('class="env-chip env-chip-heat"', out)
+        self.assertIn('class="env-layer-chip"', out)
         self.assertNotIn('class="ai-block"', out)
+
+    def test_html_renders_expanded_evidence_links(self):
+        out = FMT.render_ai_analysis_html_rich(self.result)
+        self.assertIn("<details", out)
+        self.assertIn("抓取出处", out)
+        self.assertIn("链接仅表示系统抓到的传播或背景来源，不构成事实确认。", out)
+        self.assertIn('href="https://example.com/openai?x=1&amp;y=2"', out)
+        self.assertIn("OpenAI &lt;ships&gt;", out)
+        self.assertIn("传播样本不作为事实依据。", out)
+        self.assertIn("传播标题 &lt;script&gt;", out)
+        self.assertIn("最大证据缺口", out)
 
     def test_telegram_escapes_html(self):
         # telegram 渲染应对正文做 HTML 转义（不抛异常且产出文本）
         out = FMT.render_ai_analysis_telegram(self.result)
         self.assertIn("<b>", out)
+        self.assertNotIn("抓取出处", out)
+        self.assertNotIn("example.com/openai", out)
+        self.assertNotIn("<details", out)
 
     def test_verification_status_present(self):
         out = FMT.render_ai_analysis_markdown(self.result)

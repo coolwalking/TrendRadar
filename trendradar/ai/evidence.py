@@ -220,6 +220,8 @@ def _build_one(
 
     # 代表性传播文本（按热度排序，最多 3 条）—— 不是事实来源
     sample_titles = _pick_samples(all_titles, resolver, limit=3)
+    # 抓取出处链接（仅供 HTML 证据展开；不进入 AI prompt）
+    source_links = _pick_source_links(all_titles, resolver, limit=5)
 
     # 来源数（去重的热榜平台 + RSS 源；字段名沿用 platform_count 以兼容渲染层）
     platform_count = len(source_names)
@@ -258,6 +260,7 @@ def _build_one(
         "rss_background_count": rss_background_count,
         "sentiment_flag": sentiment_flag,
         "sample_titles": sample_titles,
+        "source_links": source_links,
     }
 
 
@@ -280,6 +283,64 @@ def _pick_samples(titles: List[Dict], resolver, limit: int = 3) -> List[Dict[str
             "tier": resolver.tier_of(name) if name else "unknown",
             "trend": _rank_trend(t),
         })
+        if len(result) >= limit:
+            break
+    return result
+
+
+def _title_url(title: Dict[str, Any]) -> str:
+    """从热榜/RSS 条目中取已有抓取链接，不补全、不生成。"""
+    return (
+        title.get("url")
+        or title.get("mobile_url")
+        or title.get("mobileUrl")
+        or ""
+    )
+
+
+def _title_time(title: Dict[str, Any]) -> str:
+    """返回已有展示时间字段；没有则留空。"""
+    return (
+        title.get("time_display")
+        or title.get("published_at")
+        or title.get("first_time")
+        or title.get("last_time")
+        or ""
+    )
+
+
+def _pick_source_links(titles: List[Dict], resolver, limit: int = 5) -> List[Dict[str, Any]]:
+    """挑选带 URL 的抓取出处，供 HTML 展开证据使用。
+
+    该字段只复制程序已抓到的链接和元数据；AI prompt 渲染不读取它，避免链接进入 AI 生成路径。
+    """
+    def sort_key(t):
+        mr = _min_rank(t)
+        return mr if mr is not None else 9999
+
+    seen = set()
+    result = []
+    for t in sorted(titles, key=sort_key):
+        title = t.get("title", "")
+        url = _title_url(t)
+        if not title or not url:
+            continue
+        key = url or f"{t.get('source_name', t.get('feed_name', ''))}:{title}"
+        if key in seen:
+            continue
+        seen.add(key)
+
+        name = t.get("source_name", t.get("feed_name", t.get("source", ""))) or ""
+        rank = _min_rank(t)
+        item = {
+            "title": title,
+            "url": url,
+            "source": name,
+            "tier": resolver.tier_of(name) if name else "unknown",
+            "rank": rank,
+            "time": _title_time(t),
+        }
+        result.append(item)
         if len(result) >= limit:
             break
     return result

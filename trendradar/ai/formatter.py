@@ -20,6 +20,20 @@ _SECTION_TITLES = {
     "silence_gap": "4. 沉默温差：外热中静",
 }
 
+_HTML_SECTION_TITLES = {
+    "cross_layer_verified": "1. 跨层来源共振",
+    "high_heat_unverified": "2. 高热未获上游来源",
+    "chinese_only_hot": "3. 中文单层热",
+    "silence_gap": "4. 静默差异",
+}
+
+_HTML_STATUS_LABELS = {
+    "cross_layer_verified": "跨层来源共振",
+    "high_heat_unverified": "缺上游来源",
+    "chinese_only_hot": "中文单层热",
+    "silence_gap": "静默差异",
+}
+
 
 def _escape_html(text: str) -> str:
     """转义 HTML 特殊字符，防止 XSS 攻击"""
@@ -241,15 +255,191 @@ def _env_html_chip(label: str, value: object, css_class: str = "") -> str:
     )
 
 
+def _env_detail(item: dict) -> dict:
+    detail = item.get("evidence_detail")
+    return detail if isinstance(detail, dict) else item
+
+
+def _env_html_status(item: dict) -> str:
+    label = _env_detail(item).get("label")
+    return _escape_html(_HTML_STATUS_LABELS.get(label, item.get("verification_status", "")))
+
+
+def _env_html_layers(item: dict) -> str:
+    detail = _env_detail(item)
+    layers = detail.get("source_tiers_present")
+    if not layers:
+        source_layers = item.get("source_layers") or detail.get("source_layers") or ""
+        layers = [p for p in str(source_layers).split("/") if p and p != "-"]
+    if not layers:
+        return ""
+    chips = "".join(
+        f'<span class="env-layer-chip">{_escape_html(str(layer))}</span>'
+        for layer in layers
+    )
+    return f'<span class="env-meta-label">层级</span>{chips}'
+
+
+def _env_safe_url(url: object) -> str:
+    value = str(url or "").strip()
+    if value.startswith(("https://", "http://")):
+        return value
+    return ""
+
+
+def _env_source_links_html(links: list) -> str:
+    rows = []
+    for link in links or []:
+        if not isinstance(link, dict):
+            continue
+        title = str(link.get("title") or "").strip()
+        url = _env_safe_url(link.get("url"))
+        if not title or not url:
+            continue
+        meta_parts = []
+        tier = link.get("tier")
+        source = link.get("source")
+        time_text = link.get("time")
+        rank = link.get("rank")
+        if tier and tier != "unknown":
+            meta_parts.append(f"{tier} 层")
+        if source:
+            meta_parts.append(str(source))
+        if time_text:
+            meta_parts.append(str(time_text))
+        if rank:
+            meta_parts.append(f"#{rank}")
+        meta_html = _escape_html(" / ".join(meta_parts))
+        url_html = _escape_html(url)
+        rows.append(
+            f"""
+                                    <li class="env-source-item">
+                                        <a href="{url_html}" target="_blank" rel="noopener noreferrer">{_escape_html(title)}</a>
+                                        <span>{meta_html}{' / ' if meta_html else ''}<span class="env-source-url">{url_html}</span></span>
+                                    </li>"""
+        )
+    if not rows:
+        return ""
+    return f"""
+                                <div class="env-evidence-block">
+                                    <h5>抓取出处</h5>
+                                    <p class="env-evidence-caution">链接仅表示系统抓到的传播或背景来源，不构成事实确认。</p>
+                                    <ul class="env-source-list">{''.join(rows)}
+                                    </ul>
+                                </div>"""
+
+
+def _env_sources_by_tier_html(sources_by_tier: dict) -> str:
+    rows = []
+    for tier in ("A", "B", "C", "D", "unknown"):
+        sources = [s for s in sources_by_tier.get(tier, []) if s]
+        if not sources:
+            continue
+        label = tier if tier != "unknown" else "unknown"
+        rows.append(
+            f"<li><strong>{_escape_html(label)}</strong>：{_escape_html('、'.join(sources))}</li>"
+        )
+    if not rows:
+        return ""
+    return f"""
+                                <div class="env-evidence-block">
+                                    <h5>来源层级</h5>
+                                    <ul>{''.join(rows)}</ul>
+                                </div>"""
+
+
+def _env_sample_titles_html(samples: list) -> str:
+    rows = []
+    for sample in samples or []:
+        if not isinstance(sample, dict):
+            continue
+        title = str(sample.get("title") or "").strip()
+        if not title:
+            continue
+        meta = []
+        tier = sample.get("tier")
+        source = sample.get("source")
+        trend = sample.get("trend")
+        if tier and tier != "unknown":
+            meta.append(f"{tier} 层")
+        if source:
+            meta.append(str(source))
+        if trend:
+            meta.append(str(trend))
+        suffix = f" <span>{_escape_html(' / '.join(meta))}</span>" if meta else ""
+        rows.append(f"<li>{_escape_html(title)}{suffix}</li>")
+    if not rows:
+        return ""
+    return f"""
+                                <div class="env-evidence-block">
+                                    <h5>传播样本</h5>
+                                    <ul>{''.join(rows)}</ul>
+                                    <p class="env-evidence-caution">传播样本不作为事实依据。</p>
+                                </div>"""
+
+
+def _env_evidence_gaps(detail: dict) -> list:
+    tiers = set(detail.get("source_tiers_present") or [])
+    gaps = []
+    if "A" not in tiers:
+        gaps.append("缺少 A 层官方或一手来源。")
+    if not ({"A", "B"} & tiers):
+        gaps.append("缺少 A/B 层上游或背景来源。")
+    if detail.get("label") == "high_heat_unverified":
+        gaps.append("高热传播缺少 A/B/C 层呼应。")
+    if "D" in tiers and len(tiers) == 1:
+        gaps.append("仅有 D 层传播样本，来源层级单一。")
+    if not detail.get("source_links"):
+        gaps.append("缺少可展示的抓取出处链接。")
+    if not gaps:
+        gaps.append("未识别到主要证据缺口；仍不代表事实确认。")
+    return gaps[:3]
+
+
+def _env_evidence_html(item: dict) -> str:
+    detail = _env_detail(item)
+    blocks = [
+        _env_source_links_html(detail.get("source_links") or []),
+        _env_sources_by_tier_html(detail.get("sources_by_tier") or {}),
+        _env_sample_titles_html(detail.get("sample_titles") or []),
+    ]
+    boundary = detail.get("factual_boundary") or item.get("factual_boundary")
+    if boundary:
+        blocks.append(
+            f"""
+                                <div class="env-evidence-block">
+                                    <h5>观察边界</h5>
+                                    <ul><li>{_env_html_text(boundary)}</li></ul>
+                                </div>"""
+        )
+    gaps = _env_evidence_gaps(detail)
+    blocks.append(
+        f"""
+                                <div class="env-evidence-block">
+                                    <h5>最大证据缺口</h5>
+                                    <ul>{''.join(f'<li>{_escape_html(gap)}</li>' for gap in gaps)}</ul>
+                                </div>"""
+    )
+    blocks_html = "".join(block for block in blocks if block)
+    if not blocks_html:
+        return ""
+    return f"""
+                                <details class="env-evidence">
+                                    <summary>展开证据</summary>
+                                    <div class="env-evidence-panel">{blocks_html}
+                                    </div>
+                                </details>"""
+
+
 def _env_html_item(item: dict) -> str:
     topic = _escape_html(item.get("topic", ""))
-    status = _escape_html(item.get("verification_status", ""))
+    status = _env_html_status(item)
     summary = _env_html_text(item.get("summary", ""))
     analysis = _env_html_text(item.get("analysis", ""))
     risk = _env_html_text(item.get("risk_note") or item.get("factual_boundary"))
 
     chips = [
-        _env_html_chip("层级", item.get("source_layers"), "env-chip-layer"),
+        _env_html_layers(item),
         _env_html_chip("平台", _env_platform_preview(item.get("platforms", "")), "env-chip-platform"),
         _env_html_chip("数量", item.get("platform_count"), "env-chip-count"),
         _env_html_chip("热度", item.get("highest_heat"), "env-chip-heat"),
@@ -263,6 +453,7 @@ def _env_html_item(item: dict) -> str:
         f'<div class="env-item-analysis"><span>研判</span>{analysis}</div>' if analysis else ""
     )
     risk_html = f'<div class="env-risk">{risk}</div>' if risk else ""
+    evidence_html = _env_evidence_html(item)
 
     return f"""
                             <article class="env-item">
@@ -274,6 +465,7 @@ def _env_html_item(item: dict) -> str:
                                 <div class="env-meta">{chips_html}</div>
                                 {analysis_html}
                                 {risk_html}
+                                {evidence_html}
                             </article>"""
 
 
@@ -347,7 +539,7 @@ def _render_env_html_rich(result: AIAnalysisResult) -> str:
         items = getattr(result, label, []) or []
         if not items:
             continue
-        title = _SECTION_TITLES.get(label, LABELS[label]["title"])
+        title = _HTML_SECTION_TITLES.get(label, _SECTION_TITLES.get(label, LABELS[label]["title"]))
         item_html = "".join(_env_html_item(it) for it in items)
         ai_html += f"""
                         <section class="env-section-group" data-export-title="{_escape_html(title)}">
