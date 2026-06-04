@@ -50,6 +50,49 @@ def _load_senders():
 SENDERS = _load_senders()
 
 
+def _load_alert_state():
+    """加载纯标准库的 alert_state，并注册到 sys.modules 供 senders 惰性导入。"""
+    name = "trendradar.ai.alert_state"
+    spec = importlib.util.spec_from_file_location(
+        name, os.path.join(ROOT, "trendradar/ai/alert_state.py")
+    )
+    m = importlib.util.module_from_spec(spec)
+    sys.modules[name] = m
+    spec.loader.exec_module(m)
+    return m
+
+
+AS = _load_alert_state()
+
+ALERT_CFG = {
+    "ENABLED": True,
+    "COOLDOWN_MINUTES": 180,
+    "MAX_ITEMS": 3,
+    "ALLOW_UPGRADE_BREAK_COOLDOWN": True,
+    "HIGH_HEAT_MIN_RANK": 10,
+    "HIGH_HEAT_MIN_PLATFORMS": 2,
+    "NOTIFY_LABELS": ["cross_layer_verified", "high_heat_unverified", "chinese_only_hot"],
+}
+
+
+class _FakeBackend:
+    """模拟跨 cron 运行持久化的存储后端（内存 dict），并记录读写次数。"""
+
+    def __init__(self):
+        self.data = {}
+        self.get_calls = 0
+        self.save_calls = 0
+
+    def get_alert_state(self):
+        self.get_calls += 1
+        return dict(self.data)
+
+    def save_alert_state(self, state):
+        self.save_calls += 1
+        self.data = dict(state)
+        return True
+
+
 class _SplitTracker:
     """记录 split_content_func 是否被调用（用于验证 environment 不走分批器）。"""
 
@@ -68,13 +111,13 @@ def _ok_response():
     return resp
 
 
-def _call_telegram(ai_analysis, split_func, **extra):
+def _call_telegram(ai_analysis, split_func, mode="current", **extra):
     return SENDERS.send_to_telegram(
         bot_token="token",
         chat_id="chat",
         report_data={"stats": [], "failed_ids": [], "new_titles": [], "id_to_name": {}},
         report_type="当前榜单",
-        mode="current",
+        mode=mode,
         split_content_func=split_func,
         ai_analysis=ai_analysis,
         **extra,
@@ -267,6 +310,206 @@ class TestSendToTelegramRouting(unittest.TestCase):
         self.assertTrue(ok)
         self.assertTrue(split.called, "classic 应走原 split_content_func 分批路径")
         self.assertGreaterEqual(post.call_count, 1)
+
+
+# ════════════════════════════════════════════════════════════════
+# cooldown / 去重 / 升级再推（send_to_telegram 集成）
+# ════════════════════════════════════════════════════════════════
+
+
+def _one_item_result(label, topic, layers, heat, platform_count=2):
+    item = {
+        "topic": topic,
+        "summary": "摘要",
+        "source_layers": layers,
+        "platforms": "微博",
+        "platform_count": platform_count,
+        "highest_heat": heat,
+        "verification_status": EV.LABELS[label]["verification_status"],
+        "factual_boundary": EV.LABELS[label]["factual_boundary"],
+    }
+    if label == "high_heat_unverified":
+        item["risk_note"] = EV.RISK_NOTE_HIGH_HEAT
+    return AIAnalysisResult(report_style="environment", success=True, **{label: [item]})
+
+
+class TestCooldownIntegration(unittest.TestCase):
+    def setUp(self):
+        self.backend = _FakeBackend()
+        self.T0 = __import__("datetime").datetime(2026, 6, 4, 8, 0, 0)
+
+    def _send(self, result, now, mode="current"):
+        """模拟一次 cron 运行：每次新建 store（共享同一 backend）。"""
+        store = AS.AlertStateStore(self.backend)
+        split = _SplitTracker()
+        with mock.patch.object(SENDERS.requests, "post", return_value=_ok_response()) as post:
+            ok = SENDERS.send_to_telegram(
+                bot_token="token", chat_id="chat",
+                report_data={"stats": [], "failed_ids": [], "new_titles": [], "id_to_name": {}},
+                report_type="当前榜单", mode=mode,
+                split_content_func=split,
+                ai_analysis=result,
+                get_time_func=lambda: now,
+                alert_state_store=store,
+                alert_config=ALERT_CFG,
+            )
+        return ok, post, split
+
+    def test_first_push_sends_and_persists(self):  # #1
+        result = make_env_result()
+        ok, post, _ = self._send(result, self.T0)
+        self.assertTrue(ok)
+        self.assertEqual(post.call_count, 1)
+        # 状态已落盘：两个候选 topic_key 入库
+        self.assertIn(AS.topic_key("AI前沿模型"), self.backend.data["topics"])
+        self.assertIn(AS.topic_key("某明星瓜"), self.backend.data["topics"])
+
+    def test_within_cooldown_silent(self):  # #2
+        import datetime as _dt
+        result = make_env_result()
+        self._send(result, self.T0)
+        ok, post, _ = self._send(result, self.T0 + _dt.timedelta(minutes=60))
+        self.assertTrue(ok)
+        post.assert_not_called()  # 冷却内全部抑制 → 静默成功
+
+    def test_after_cooldown_pushes_again(self):  # #3
+        import datetime as _dt
+        result = make_env_result()
+        self._send(result, self.T0)
+        ok, post, _ = self._send(result, self.T0 + _dt.timedelta(minutes=200))
+        self.assertTrue(ok)
+        self.assertEqual(post.call_count, 1)
+
+    def test_label_upgrade_breaks_cooldown(self):  # #4
+        import datetime as _dt
+        r1 = _one_item_result("high_heat_unverified", "升级议题", "D", "微博 第3名")
+        self._send(r1, self.T0)
+        # 30 分钟后同议题升级为 cross_layer_verified（含 A 层）
+        r2 = _one_item_result("cross_layer_verified", "升级议题", "A/D", "微博 第3名")
+        ok, post, _ = self._send(r2, self.T0 + _dt.timedelta(minutes=30))
+        self.assertTrue(ok)
+        self.assertEqual(post.call_count, 1)
+
+    def test_weak_high_heat_gated_out(self):  # #6（集成）
+        # rank=40 且单平台 → 不满足 heat gate → 首见也静默
+        result = _one_item_result("high_heat_unverified", "弱高热", "D", "微博 第40名", platform_count=1)
+        ok, post, _ = self._send(result, self.T0)
+        self.assertTrue(ok)
+        post.assert_not_called()
+
+    def test_does_not_mutate_ai_analysis(self):  # #9
+        result = make_env_result()
+        before_cross = list(result.cross_layer_verified)
+        before_high = list(result.high_heat_unverified)
+        self._send(result, self.T0)
+        # cooldown 只过滤局部 items，不改 ai_analysis（HTML 仍读完整列表）
+        self.assertEqual(result.cross_layer_verified, before_cross)
+        self.assertEqual(result.high_heat_unverified, before_high)
+
+    def test_store_none_behaves_like_previous_stage(self):  # #11
+        result = make_env_result()
+        split = _SplitTracker()
+        with mock.patch.object(SENDERS.requests, "post", return_value=_ok_response()) as post:
+            ok = SENDERS.send_to_telegram(
+                bot_token="token", chat_id="chat",
+                report_data={"stats": [], "failed_ids": [], "new_titles": [], "id_to_name": {}},
+                report_type="当前榜单", mode="current",
+                split_content_func=split,
+                ai_analysis=result,
+                alert_state_store=None,  # 未启用 → 无冷却
+                alert_config=ALERT_CFG,
+            )
+        self.assertTrue(ok)
+        self.assertEqual(post.call_count, 1)  # 直接推送，无门控
+
+    # ── mode 作用域：cooldown 只作用于实时模式，daily 不受影响 ──
+
+    def test_daily_mode_no_candidate_not_silenced(self):
+        # environment + daily：即使没有 alert candidate，也不应被候选 gate 静默
+        result = AIAnalysisResult(
+            report_style="environment", success=True,
+            silence_gap=[{"topic": "外热中静议题", "source_layers": "B"}],
+        )
+        ok, post, split = self._send(result, self.T0, mode="daily")
+        self.assertTrue(ok)
+        self.assertTrue(split.called, "daily 应走完整报告 split 路径，而非 alert brief 候选 gate")
+        self.assertGreaterEqual(post.call_count, 1, "daily 不应被静默")
+
+    def test_daily_mode_does_not_touch_alert_state(self):
+        # environment + daily：即使有候选，也不读写 alert_state（cooldown 不影响 daily）
+        result = make_env_result()
+        ok, post, split = self._send(result, self.T0, mode="daily")
+        self.assertTrue(ok)
+        self.assertTrue(split.called)
+        self.assertEqual(self.backend.get_calls, 0, "daily 不应读取 alert_state")
+        self.assertEqual(self.backend.save_calls, 0, "daily 不应写入 alert_state")
+        self.assertEqual(self.backend.data, {})
+
+    def test_incremental_mode_applies_cooldown(self):
+        import datetime as _dt
+        result = make_env_result()
+        self._send(result, self.T0, mode="incremental")
+        ok, post, _ = self._send(
+            result, self.T0 + _dt.timedelta(minutes=60), mode="incremental"
+        )
+        self.assertTrue(ok)
+        post.assert_not_called()  # incremental 同样受 cooldown 约束
+
+    def test_current_mode_applies_cooldown(self):
+        import datetime as _dt
+        result = make_env_result()
+        self._send(result, self.T0, mode="current")
+        ok, post, _ = self._send(result, self.T0 + _dt.timedelta(minutes=60), mode="current")
+        self.assertTrue(ok)
+        post.assert_not_called()
+
+    def test_manual_trigger_bypasses_gate(self):
+        # 未来手动 /now：绕过 realtime alert gate，直接走完整渲染，且不读写 alert_state
+        result = make_env_result()
+        store = AS.AlertStateStore(self.backend)
+        split = _SplitTracker()
+        with mock.patch.object(SENDERS.requests, "post", return_value=_ok_response()) as post:
+            ok = SENDERS.send_to_telegram(
+                bot_token="token", chat_id="chat",
+                report_data={"stats": [], "failed_ids": [], "new_titles": [], "id_to_name": {}},
+                report_type="当前榜单", mode="current",
+                split_content_func=split,
+                ai_analysis=result,
+                get_time_func=lambda: self.T0,
+                alert_state_store=store,
+                alert_config=ALERT_CFG,
+                manual_trigger=True,
+            )
+        self.assertTrue(ok)
+        self.assertTrue(split.called, "manual /now 应走完整渲染路径，而非 alert gate")
+        self.assertEqual(self.backend.get_calls, 0, "manual /now 不应读取 alert_state")
+        self.assertEqual(self.backend.save_calls, 0, "manual /now 不应写入 alert_state")
+
+
+class TestRealtimeAlertGateScope(unittest.TestCase):
+    """realtime alert gate 作用域规则（唯一来源 should_apply_realtime_alert_gate）。"""
+
+    def test_environment_current_applies(self):
+        self.assertTrue(SENDERS.should_apply_realtime_alert_gate("environment", "current"))
+
+    def test_environment_incremental_applies(self):
+        self.assertTrue(SENDERS.should_apply_realtime_alert_gate("environment", "incremental"))
+
+    def test_environment_daily_excluded(self):
+        self.assertFalse(SENDERS.should_apply_realtime_alert_gate("environment", "daily"))
+
+    def test_manual_trigger_excluded(self):
+        self.assertFalse(
+            SENDERS.should_apply_realtime_alert_gate("environment", "current", manual_trigger=True)
+        )
+
+    def test_classic_excluded(self):
+        self.assertFalse(SENDERS.should_apply_realtime_alert_gate("classic", "current"))
+
+    def test_unknown_mode_excluded(self):
+        # 默认从严：未知 / 缺省 mode 不施加 gate
+        self.assertFalse(SENDERS.should_apply_realtime_alert_gate("environment", "daily_brief"))
+        self.assertFalse(SENDERS.should_apply_realtime_alert_gate("environment", ""))
 
 
 if __name__ == "__main__":

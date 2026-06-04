@@ -482,6 +482,7 @@ class AppContext:
             get_time_func=self.get_time,
             split_content_func=self.split_content,
             translator=translator,
+            storage_backend=self.get_storage_manager(),
         )
 
     def create_scheduler(self) -> Scheduler:
