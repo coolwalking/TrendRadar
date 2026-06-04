@@ -47,8 +47,14 @@ for _name in [
     "send_to_telegram",
     "send_to_wework",
     "send_to_generic_webhook",
+    "send_telegram_document",
 ]:
     setattr(senders_stub, _name, lambda *args, **kwargs: True)
+
+
+senders_stub.resolve_report_attachment_path = (
+    lambda output_dir, mode, report_kind="full": "path"
+)
 
 
 def _should_apply_realtime_alert_gate(report_style, mode, manual_trigger=False):
