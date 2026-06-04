@@ -31,6 +31,7 @@ from .senders import (
     send_to_telegram,
     send_to_wework,
     send_to_generic_webhook,
+    should_apply_realtime_alert_gate,
 )
 
 
@@ -552,8 +553,13 @@ class NotificationDispatcher:
         # environment 实时提醒的 cooldown 状态存储（仅在启用且有存储后端时构造，惰性加载）。
         # 多账号共享 topic 级状态：同议题对所有账号一次冷却（MVP 取舍）。classic 风格不会触达。
         alert_config = self.config.get("ALERT", {})
+        report_style = getattr(ai_analysis, "report_style", "classic") if ai_analysis else "classic"
         alert_state_store = None
-        if self.storage_backend is not None and alert_config.get("ENABLED", True):
+        if (
+            self.storage_backend is not None
+            and alert_config.get("ENABLED", True)
+            and should_apply_realtime_alert_gate(report_style, mode)
+        ):
             from trendradar.ai.alert_state import AlertStateStore
 
             alert_state_store = AlertStateStore(self.storage_backend)
@@ -816,4 +822,3 @@ class NotificationDispatcher:
             custom_smtp_port=self.config.get("EMAIL_SMTP_PORT", ""),
             get_time_func=self.get_time_func,
         )
-
