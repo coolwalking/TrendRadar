@@ -184,7 +184,7 @@ rss:
       url: "https://www.nytimes.com/svc/collections/v1/publish/www.nytimes.com/spotlight/artificial-intelligence/rss.xml"
       max_age_days: 7
 
-    # AI 公司/研究机构 - 官方源优先；无官方 RSS 时使用 OpenRSS 生成源
+    # AI 公司/研究机构 - 官方源优先；无官方 RSS 时使用内置 HTML 解析兜底
     - id: "openai-news"
       name: "OpenAI News"
       url: "https://openai.com/news/rss.xml"
@@ -196,13 +196,17 @@ rss:
       max_age_days: 7
 
     - id: "anthropic-news-openrss"
-      name: "Anthropic News via OpenRSS"
-      url: "https://openrss.org/www.anthropic.com/news/rss.xml"
+      name: "Anthropic News"
+      url: "https://www.anthropic.com/news"
+      source_type: "anthropic_html"
+      link_prefixes: ["/news/"]
       max_age_days: 7
 
     - id: "anthropic-research-openrss"
-      name: "Anthropic Research via OpenRSS"
-      url: "https://openrss.org/www.anthropic.com/research/rss.xml"
+      name: "Anthropic Research"
+      url: "https://www.anthropic.com/research"
+      source_type: "anthropic_html"
+      link_prefixes: ["/research/", "/news/"]
       max_age_days: 7
 
     - id: "google-ai-blog"

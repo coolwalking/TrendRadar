@@ -7,8 +7,13 @@ RSS 抓取器
 
 import time
 import random
+import re
+import html
 from dataclasses import dataclass
+from datetime import datetime
+from html.parser import HTMLParser
 from typing import List, Dict, Optional, Tuple
+from urllib.parse import urljoin
 
 import requests
 
@@ -26,6 +31,46 @@ class RSSFeedConfig:
     max_items: int = 0          # 最大条目数（0=不限制）
     enabled: bool = True        # 是否启用
     max_age_days: Optional[int] = None  # 文章最大年龄（天），覆盖全局设置；None=使用全局，0=禁用过滤
+    source_type: str = "rss"    # 源类型：rss / anthropic_html
+    link_prefixes: Optional[List[str]] = None  # HTML 源允许的链接前缀
+
+
+class _AnthropicLinkExtractor(HTMLParser):
+    """从 Anthropic 列表页提取文章链接和卡片文本。"""
+
+    def __init__(self, link_prefixes: List[str]):
+        super().__init__()
+        self.link_prefixes = tuple(link_prefixes)
+        self.links: List[Dict[str, str]] = []
+        self._current: Optional[Dict[str, str]] = None
+        self._heading_depth = 0
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        if self._current is not None and re.fullmatch(r"h[1-6]", tag):
+            self._heading_depth += 1
+            return
+
+        if tag == "a":
+            attrs_map = dict(attrs)
+            href = attrs_map.get("href", "")
+            if href.startswith(self.link_prefixes):
+                self._current = {"href": href, "text": "", "heading": ""}
+
+    def handle_data(self, data: str) -> None:
+        if self._current is not None:
+            self._current["text"] += data.strip() + " "
+            if self._heading_depth > 0:
+                self._current["heading"] += data.strip() + " "
+
+    def handle_endtag(self, tag: str) -> None:
+        if self._current is not None and re.fullmatch(r"h[1-6]", tag):
+            self._heading_depth = max(0, self._heading_depth - 1)
+            return
+
+        if tag == "a" and self._current is not None:
+            self.links.append(self._current)
+            self._current = None
+            self._heading_depth = 0
 
 
 class RSSFetcher:
@@ -84,6 +129,113 @@ class RSSFetcher:
 
         return session
 
+    def _parse_anthropic_html(self, content: str, feed: RSSFeedConfig) -> List[RSSItem]:
+        """解析 Anthropic 官方 News/Research 列表页。"""
+        prefixes = feed.link_prefixes or ["/news/", "/research/"]
+        extractor = _AnthropicLinkExtractor(prefixes)
+        extractor.feed(content)
+
+        categories = [
+            "Economic Research",
+            "Societal Impacts",
+            "Interpretability",
+            "Announcements",
+            "Alignment",
+            "Product",
+            "Policy",
+            "Science",
+        ]
+        month_pattern = (
+            r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)"
+            r"\s+\d{1,2},\s+\d{4}"
+        )
+
+        now = get_configured_time(self.timezone)
+        crawl_time = now.strftime("%H:%M")
+        items: List[RSSItem] = []
+        seen_urls = set()
+
+        for link in extractor.links:
+            url = urljoin(feed.url, link["href"])
+            if url in seen_urls:
+                continue
+
+            text = re.sub(r"\s+", " ", html.unescape(link.get("text", ""))).strip()
+            if not text:
+                continue
+
+            match = re.search(month_pattern, text)
+            if not match:
+                continue
+
+            heading = re.sub(r"\s+", " ", html.unescape(link.get("heading", ""))).strip()
+            date_text = match.group(0)
+            before_date = text[:match.start()].strip()
+            after_date = text[match.end():].strip()
+            category = ""
+            title = heading
+            summary = ""
+
+            if before_date:
+                for candidate in categories:
+                    suffix = f" {candidate}"
+                    if before_date == candidate:
+                        category = candidate
+                        title = title or after_date
+                        after_date = ""
+                        break
+                    if before_date.endswith(suffix):
+                        category = candidate
+                        title = title or before_date[:-len(suffix)].strip()
+                        break
+                if not title:
+                    title = before_date
+                summary = after_date
+            else:
+                for candidate in categories:
+                    prefix = f"{candidate} "
+                    if after_date == candidate:
+                        category = candidate
+                        break
+                    if after_date.startswith(prefix):
+                        category = candidate
+                        title = title or after_date[len(prefix):].strip()
+                        break
+                if not title:
+                    title = after_date
+
+            if not title:
+                continue
+
+            published_at = ""
+            try:
+                published_at = datetime.strptime(date_text, "%b %d, %Y").date().isoformat()
+            except ValueError:
+                pass
+
+            if category and summary:
+                summary = f"{category}: {summary}"
+            elif category:
+                summary = category
+
+            items.append(RSSItem(
+                title=title,
+                feed_id=feed.id,
+                feed_name=feed.name,
+                url=url,
+                guid=url,
+                published_at=published_at,
+                summary=summary[:500] if summary else "",
+                author="Anthropic",
+                crawl_time=crawl_time,
+                first_time=crawl_time,
+                last_time=crawl_time,
+                count=1,
+            ))
+            seen_urls.add(url)
+
+        return items
+
     def _filter_by_freshness(
         self,
         items: List[RSSItem],
@@ -140,33 +292,39 @@ class RSSFetcher:
             response = self.session.get(feed.url, timeout=self.timeout)
             response.raise_for_status()
 
-            parsed_items = self.parser.parse(response.text, feed.url)
+            if feed.source_type == "anthropic_html":
+                items = self._parse_anthropic_html(response.text, feed)
+            else:
+                parsed_items = self.parser.parse(response.text, feed.url)
 
-            # 限制条目数量（0=不限制）
+                # 限制条目数量（0=不限制）
+                if feed.max_items > 0:
+                    parsed_items = parsed_items[:feed.max_items]
+
+                # 转换为 RSSItem（使用配置的时区）
+                now = get_configured_time(self.timezone)
+                crawl_time = now.strftime("%H:%M")
+                items = []
+
+                for parsed in parsed_items:
+                    item = RSSItem(
+                        title=parsed.title,
+                        feed_id=feed.id,
+                        feed_name=feed.name,
+                        url=parsed.url,
+                        guid=parsed.guid or "",
+                        published_at=parsed.published_at or "",
+                        summary=parsed.summary or "",
+                        author=parsed.author or "",
+                        crawl_time=crawl_time,
+                        first_time=crawl_time,
+                        last_time=crawl_time,
+                        count=1,
+                    )
+                    items.append(item)
+
             if feed.max_items > 0:
-                parsed_items = parsed_items[:feed.max_items]
-
-            # 转换为 RSSItem（使用配置的时区）
-            now = get_configured_time(self.timezone)
-            crawl_time = now.strftime("%H:%M")
-            items = []
-
-            for parsed in parsed_items:
-                item = RSSItem(
-                    title=parsed.title,
-                    feed_id=feed.id,
-                    feed_name=feed.name,
-                    url=parsed.url,
-                    guid=parsed.guid or "",
-                    published_at=parsed.published_at or "",
-                    summary=parsed.summary or "",
-                    author=parsed.author or "",
-                    crawl_time=crawl_time,
-                    first_time=crawl_time,
-                    last_time=crawl_time,
-                    count=1,
-                )
-                items.append(item)
+                items = items[:feed.max_items]
 
             # 注意：新鲜度过滤已移至推送阶段（_convert_rss_items_to_list）
             # 这样所有文章都会存入数据库，但旧文章不会推送
@@ -289,6 +447,8 @@ class RSSFetcher:
                 max_items=feed_config.get("max_items", 0),  # 0=不限制
                 enabled=feed_config.get("enabled", True),
                 max_age_days=max_age_days,  # None=使用全局，0=禁用，>0=覆盖
+                source_type=feed_config.get("source_type", "rss"),
+                link_prefixes=feed_config.get("link_prefixes"),
             )
             if feed.id and feed.url:
                 feeds.append(feed)

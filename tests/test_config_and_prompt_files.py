@@ -103,6 +103,22 @@ class TestConfigYaml(unittest.TestCase):
         self.assertIn("缺省/非法=14", self.text)
         self.assertIn("0 或负数=禁用 TTL 清理", self.text)
 
+    def test_anthropic_feeds_use_official_html_fallback(self):
+        self.assertIn('id: "anthropic-news-openrss"', self.text)
+        self.assertIn('id: "anthropic-research-openrss"', self.text)
+
+        news_start = self.text.index('id: "anthropic-news-openrss"')
+        news_block = self.text[news_start:self.text.find("\n\n", news_start)]
+        self.assertIn('url: "https://www.anthropic.com/news"', news_block)
+        self.assertIn('source_type: "anthropic_html"', news_block)
+        self.assertIn('link_prefixes: ["/news/"]', news_block)
+
+        research_start = self.text.index('id: "anthropic-research-openrss"')
+        research_block = self.text[research_start:self.text.find("\n\n", research_start)]
+        self.assertIn('url: "https://www.anthropic.com/research"', research_block)
+        self.assertIn('source_type: "anthropic_html"', research_block)
+        self.assertIn('link_prefixes: ["/research/", "/news/"]', research_block)
+
 
 class TestAlertConfigLoader(unittest.TestCase):
     @classmethod
