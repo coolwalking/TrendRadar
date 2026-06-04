@@ -8,7 +8,13 @@ AI 分析结果格式化模块
 import html as html_lib
 import re
 from .analyzer import AIAnalysisResult
-from .evidence import LABELS, SECTION_ORDER, SUPPRESSED_BUCKETS, derive_radar_readout
+from .evidence import (
+    LABELS,
+    RISK_NOTE_HIGH_HEAT,
+    SECTION_ORDER,
+    SUPPRESSED_BUCKETS,
+    derive_radar_readout,
+)
 
 ENV_TITLE = "信息环境异常监测日报"
 
@@ -227,6 +233,135 @@ def _render_env_telegram(result: AIAnalysisResult) -> str:
         lines.append(f"<b>{_escape_html(heading)}</b>")
         lines.append(_escape_html(body).replace(" ｜ ", "\n"))
         lines.append("")
+    return "\n".join(lines).rstrip()
+
+
+# ════════════════════════════════════════════════════════════════
+# Telegram 异常提醒 brief（alert layer，非完整报告）
+# ════════════════════════════════════════════════════════════════
+
+ALERT_TITLE = "TrendRadar｜异常提醒"
+
+# 自动提醒候选桶优先级（silence_gap 不进自动提醒，留给每日简报）
+_ALERT_BUCKET_ORDER = [
+    "cross_layer_verified",
+    "high_heat_unverified",
+    "chinese_only_hot",
+]
+
+# Telegram alert 状态简称（避免营销词；D 层统一表达为"高热待核实/传播升温"）
+_ALERT_STATUS_LABELS = {
+    "cross_layer_verified": "跨层呼应",
+    "high_heat_unverified": "高热待核实",
+    "chinese_only_hot": "中文独热",
+}
+
+# 单条摘要在 alert brief 里的最大字符数（过长先截断单条，绝不拆成多批）
+_ALERT_MAX_SUMMARY = 120
+
+
+def _truncate_text(text: str, max_chars: int) -> str:
+    """把单条文本截断到 max_chars 字符，超长加省略号。"""
+    text = (text or "").strip()
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars].rstrip() + "…"
+
+
+def select_environment_alert_items(result, max_items=3):
+    """从 environment 分析结果中挑选值得自动推送的异常议题。
+
+    candidate selection 与 rendering 分离：本函数只做自动推送的 selection gate；
+    renderer 不依赖它，未来手动 /now 可绕过本 gate 直接复用 renderer。
+
+    规则（MVP）：按 cross_layer_verified → high_heat_unverified → chinese_only_hot
+    的优先级取候选，最多 max_items 条；silence_gap / 已抑制 / background / 无 topic 项
+    一律不进自动提醒。
+
+    Returns:
+        List[Tuple[str, dict]]: [(bucket_label, item), ...]
+    """
+    if not result or not getattr(result, "success", False):
+        return []
+    if getattr(result, "report_style", "classic") != "environment":
+        return []
+
+    selected = []
+    for label in _ALERT_BUCKET_ORDER:
+        # TODO: high_heat_unverified 当前默认进候选；后续应加 rank / platform_count /
+        # cooldown gate，避免高热项把实时推送拉得过频。
+        for item in getattr(result, label, []) or []:
+            if not isinstance(item, dict):
+                continue
+            if not str(item.get("topic", "")).strip():
+                continue
+            selected.append((label, item))
+            if len(selected) >= max_items:
+                return selected
+    return selected
+
+
+def render_environment_telegram_alert_brief(
+    result, items, report_type=None, mode=None, html_file_path=None, now=None
+):
+    """渲染 environment 异常提醒 brief（Telegram parse_mode=HTML）。
+
+    只输出 alert layer：标题 + 候选数量 + 每条(topic/状态/层级/热度/摘要/风险边界)
+    + 完整报告链接 + 更新时间。绝不输出 source_links / sample_titles / evidence_detail /
+    展开证据 / URL。candidate selection 由 select_environment_alert_items 完成，
+    本 renderer 未来可被手动 /now 复用（绕过 selection gate）。
+
+    Args:
+        result: AIAnalysisResult（保留参数以便未来手动报告复用，如读 overview）。
+        items: [(label, item), ...]，由 select_environment_alert_items 产出。
+        report_type / mode: 预留给未来手动报告，本轮不影响输出。
+        html_file_path: 完整报告路径；输出前会 HTML escape，为空则省略该行。
+        now: 更新时间戳；为空时回退 datetime.now()（调用方应传入 get_time_func() 结果以统一时区）。
+    """
+    from datetime import datetime
+
+    lines = [f"<b>{_escape_html(ALERT_TITLE)}</b>", ""]
+    lines.append(f"本轮发现 {len(items)} 个异常信号")
+    lines.append("")
+
+    for idx, (label, item) in enumerate(items, 1):
+        topic = _escape_html(str(item.get("topic", "")).strip())
+        lines.append(f"{idx}. <b>{topic}</b>")
+
+        # 状态｜层级｜最高热度 一行（空/占位字段跳过）
+        status = _ALERT_STATUS_LABELS.get(label) or str(item.get("verification_status", "")).strip()
+        meta_parts = [status] if status else []
+        layers = str(item.get("source_layers", "") or "").strip()
+        if layers and layers != "-":
+            meta_parts.append(layers)
+        heat = str(item.get("highest_heat", "") or "").strip()
+        if heat and heat != "-":
+            meta_parts.append(f"最高热度 {heat}")
+        if meta_parts:
+            lines.append(_escape_html("｜".join(meta_parts)))
+
+        # 摘要：summary > analysis > factual_boundary，单条截断
+        body = (
+            item.get("summary") or item.get("analysis") or item.get("factual_boundary") or ""
+        ).strip()
+        if body:
+            lines.append(_escape_html(_truncate_text(body, _ALERT_MAX_SUMMARY)))
+
+        # high_heat_unverified 必含风险边界（与摘要重复时不重复输出）
+        if label == "high_heat_unverified":
+            risk = (
+                item.get("risk_note") or item.get("factual_boundary") or RISK_NOTE_HIGH_HEAT
+            ).strip()
+            if risk and risk != body:
+                lines.append(_escape_html(risk))
+
+        lines.append("")
+
+    if html_file_path:
+        lines.append(f"完整报告：{_escape_html(str(html_file_path))}")
+    ts = (now or datetime.now()).strftime("%Y-%m-%d %H:%M:%S")
+    lines.append(f"更新时间：{ts}")
+
     return "\n".join(lines).rstrip()
 
 
