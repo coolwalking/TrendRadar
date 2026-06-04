@@ -169,6 +169,43 @@ class TestSelectAlertItems(unittest.TestCase):
         result = AIAnalysisResult(report_style="environment", success=False, skipped=True)
         self.assertEqual(FMT.select_environment_alert_items(result), [])
 
+    # ── allowed_labels（notify_labels 语义）──
+
+    def test_allowed_labels_only_chinese_only_hot(self):
+        # notify_labels 只允许 chinese_only_hot 时，即使 cross_layer/high_heat 存在也跳过它们
+        result = AIAnalysisResult(
+            report_style="environment", success=True,
+            cross_layer_verified=[{"topic": "跨层议题", "source_layers": "A/D"}],
+            high_heat_unverified=[{"topic": "高热议题", "source_layers": "D"}],
+            chinese_only_hot=[{"topic": "中文独热议题", "source_layers": "D"}],
+        )
+        items = FMT.select_environment_alert_items(result, allowed_labels=["chinese_only_hot"])
+        labels = [lb for lb, _ in items]
+        self.assertEqual(labels, ["chinese_only_hot"])
+
+    def test_allowed_labels_only_cross_layer(self):
+        # notify_labels 只允许 cross_layer_verified 时，不会选 high_heat_unverified
+        result = make_env_result()
+        items = FMT.select_environment_alert_items(
+            result, max_items=3, allowed_labels=["cross_layer_verified"],
+        )
+        labels = [lb for lb, _ in items]
+        self.assertIn("cross_layer_verified", labels)
+        self.assertNotIn("high_heat_unverified", labels)
+
+    def test_allowed_labels_none_uses_default_order(self):
+        # allowed_labels=None → 使用默认 _ALERT_BUCKET_ORDER，行为不变
+        result = make_env_result()
+        items_default = FMT.select_environment_alert_items(result, max_items=3)
+        items_none = FMT.select_environment_alert_items(result, max_items=3, allowed_labels=None)
+        self.assertEqual(items_default, items_none)
+
+    def test_allowed_labels_empty_list_yields_nothing(self):
+        # allowed_labels=[] → 无桶可选 → 空列表
+        result = make_env_result()
+        items = FMT.select_environment_alert_items(result, max_items=3, allowed_labels=[])
+        self.assertEqual(items, [])
+
 
 # ════════════════════════════════════════════════════════════════
 # renderer：只输出 alert layer

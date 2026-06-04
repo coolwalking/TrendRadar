@@ -566,6 +566,7 @@ def send_to_telegram(
     # 作用域规则统一由 should_apply_realtime_alert_gate 决定（current/incremental 自动推送）：
     #   - daily（含 daily_brief）与手动 /now 不在此分支，落到下方完整报告 split 路径；
     #   - 仅本分支做候选筛选 + cooldown/去重/升级，并读写 alert_state；
+    #   - cooldown / alert gate 不影响 daily digest（daily 由专门 renderer 负责，不读写 alert_state）；
     #   - HTML 报告始终负责完整阅读与证据展开。classic 风格保持下方原逻辑。
     report_style = getattr(ai_analysis, "report_style", "classic") if ai_analysis else "classic"
     if (
@@ -580,10 +581,13 @@ def send_to_telegram(
 
         alert_cfg = alert_config or {}
         max_items = alert_cfg.get("MAX_ITEMS", 3)
-        items = select_environment_alert_items(ai_analysis, max_items=max_items)
-
-        # 候选标签门控（notify_labels，silence_gap 等永不进自动提醒）
         notify_labels = alert_cfg.get("NOTIFY_LABELS")
+        # 语义：先按 notify_labels 限定允许的桶，再按优先级选满 max_items；
+        # 不是「先选 3 条再过滤」——那会在窄白名单时误丢候选。
+        items = select_environment_alert_items(
+            ai_analysis, max_items=max_items, allowed_labels=notify_labels,
+        )
+        # 防御性兜底：selector 已按 allowed_labels 过滤，此处再过滤一次仅为容错
         if notify_labels:
             items = [(label, it) for (label, it) in items if label in notify_labels]
 

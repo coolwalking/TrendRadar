@@ -268,7 +268,7 @@ def _truncate_text(text: str, max_chars: int) -> str:
     return text[:max_chars].rstrip() + "…"
 
 
-def select_environment_alert_items(result, max_items=3):
+def select_environment_alert_items(result, max_items=3, allowed_labels=None):
     """从 environment 分析结果中挑选值得自动推送的异常议题。
 
     candidate selection 与 rendering 分离：本函数只做自动推送的 selection gate；
@@ -278,6 +278,14 @@ def select_environment_alert_items(result, max_items=3):
     的优先级取候选，最多 max_items 条；silence_gap / 已抑制 / background / 无 topic 项
     一律不进自动提醒。
 
+    Args:
+        result: AIAnalysisResult。
+        max_items: 最多选取条数。
+        allowed_labels: 允许进入自动提醒的标签白名单（来自 alert.notify_labels 配置）；
+            为 None 或空时使用默认 _ALERT_BUCKET_ORDER（即全部三个桶）。
+            语义：先按白名单过滤桶，再按优先级选满 max_items——
+            避免「先选 3 条再按白名单过滤」导致窄白名单误丢候选。
+
     Returns:
         List[Tuple[str, dict]]: [(bucket_label, item), ...]
     """
@@ -286,8 +294,15 @@ def select_environment_alert_items(result, max_items=3):
     if getattr(result, "report_style", "classic") != "environment":
         return []
 
+    # 先按 allowed_labels 过滤桶，再按优先级遍历（语义：白名单 → 优先级 → cap）
+    if allowed_labels is not None:
+        allowed_set = set(allowed_labels)
+        bucket_order = [lb for lb in _ALERT_BUCKET_ORDER if lb in allowed_set]
+    else:
+        bucket_order = _ALERT_BUCKET_ORDER
+
     selected = []
-    for label in _ALERT_BUCKET_ORDER:
+    for label in bucket_order:
         # TODO: high_heat_unverified 当前默认进候选；后续应加 rank / platform_count /
         # cooldown gate，避免高热项把实时推送拉得过频。
         for item in getattr(result, label, []) or []:
