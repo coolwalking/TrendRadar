@@ -565,6 +565,30 @@ alert:
 
 
 # ===============================================================
+# 9b. Telegram HTML 报告附件（增强项，默认关闭）
+#
+# 文本推送成功后，可选地把发布根的完整报告作为 document 附件发给 receiver。
+# 重要语义：
+#   - 附件失败【永远不会】影响文本推送结果；failure_behavior 只控制日志强度。
+#   - 第一版只发送 public/{current|daily}/full.html，
+#     不发送 state.json / index.html / db / log / alert_state / secrets。
+#   - 多 receiver 时，每个文本发送成功的 receiver 都会单独收到附件。
+# ===============================================================
+telegram_attachments:
+  enabled: false                      # 总开关，默认关闭
+  # 哪些推送成功后附带 HTML（均要求 environment 风格，classic 不附附件）：
+  #   - realtime_alert：current/incremental 且本轮真的推了 alert
+  #   - daily_digest  ：environment 每日简报（指 environment daily digest，不是所有 mode=daily）
+  # 空列表 [] = 禁用附件（无可触发事件，等效于 enabled: false）。
+  attach_on:
+    - realtime_alert
+    - daily_digest
+  report_kind: full                   # v1 仅支持 full（= public/{group}/full.html）
+  max_file_mb: 8                      # 超过则跳过该附件并记日志（<=0 表示不检查大小）
+  failure_behavior: warn              # warn=失败打 ⚠️ 日志；silent=仅普通日志。两者都不影响文本推送结果
+
+
+# ===============================================================
 # 10. AI 翻译功能（模型配置见上方 ai 段）
 #
 # 对推送标题进行翻译，不包含 AI 分析的内容
