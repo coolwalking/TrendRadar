@@ -32,6 +32,7 @@ from trendradar.report import (
     generate_html_report,
     render_html_content,
 )
+from trendradar.report.dashboard import write_dashboard
 from trendradar.notification import (
     render_feishu_content,
     render_dingtalk_content,
@@ -344,6 +345,33 @@ class AppContext:
             time_filename=self.format_time(),
             render_html_func=lambda *args, **kwargs: self.render_html(*args, rss_items=rss_items, rss_new_items=rss_new_items, ai_analysis=ai_analysis, standalone_data=standalone_data, **kwargs),
             report_metadata=report_metadata,
+        )
+
+    def generate_dashboard(
+        self,
+        mode: str = "daily",
+        ai_analysis: Optional[Any] = None,
+        report_metadata: Optional[Dict] = None,
+        output_dir: str = "output",
+    ) -> str:
+        """
+        生成发布根的轻量盘面页与摘要缓存。
+
+        与 alert / cooldown 无关：每次运行都刷新对应 group 的盘面。
+        - 写 output/public/{group}/index.html（盘面页）
+        - 写 output/public/{group}/state.json（发布安全摘要缓存）
+        - 写 output/public/index.html（落地页）
+        **不写 full.html**（由 generate_html_report 负责）。
+
+        Returns:
+            str: 盘面页路径（public/{group}/index.html）
+        """
+        return write_dashboard(
+            output_dir=output_dir,
+            mode=mode,
+            ai_analysis=ai_analysis,
+            report_metadata=report_metadata,
+            generated_at=self.get_time(),
         )
 
     def render_html(

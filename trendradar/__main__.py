@@ -892,6 +892,14 @@ class NewsAnalyzer:
             display_regions = self.ctx.config.get("DISPLAY", {}).get("REGIONS", {})
             html_standalone = standalone_data if display_regions.get("STANDALONE", False) else None
             html_ai = ai_result if display_regions.get("AI_ANALYSIS", True) else None
+            report_metadata = {
+                "hotlist_total": total_titles,
+                "platform_total": len(self.ctx.platform_ids),
+                "rss_matched_count": self._rss_matched_count,
+                "rss_total_count": self._rss_total_count,
+                "rss_source_total": self._rss_source_total,
+                "rss_source_failed": self._rss_source_failed,
+            }
             html_file = self.ctx.generate_html(
                 stats,
                 total_titles,
@@ -905,14 +913,16 @@ class NewsAnalyzer:
                 ai_analysis=html_ai,
                 standalone_data=html_standalone,
                 frequency_file=self.frequency_file,
-                report_metadata={
-                    "hotlist_total": total_titles,
-                    "platform_total": len(self.ctx.platform_ids),
-                    "rss_matched_count": self._rss_matched_count,
-                    "rss_total_count": self._rss_total_count,
-                    "rss_source_total": self._rss_source_total,
-                    "rss_source_failed": self._rss_source_failed,
-                },
+                report_metadata=report_metadata,
+            )
+
+            # 生成发布根盘面页（与通知/alert 无关：每次运行都刷新对应 group）
+            # 有意置于 HTML 块内：盘面页链接 public/{group}/full.html，仅当 HTML 生成时才存在，
+            # 解耦会产生死链。如需"无 HTML 也出盘面"，应另加独立开关而非简单外移。
+            self.ctx.generate_dashboard(
+                mode=mode,
+                ai_analysis=html_ai,
+                report_metadata=report_metadata,
             )
 
         return stats, html_file, ai_result, rss_items
