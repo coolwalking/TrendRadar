@@ -125,12 +125,16 @@ def _rep_rank(title: Dict[str, Any]) -> Optional[int]:
 
 
 def _nl_ai_item_compact(item: Dict[str, Any]) -> str:
-    """单条异常信号：topic + 一行 meta + summary + 可选风险提示。
+    """单条异常信号：topic + 一行 meta + 正文 + 可选风险提示。
 
-    字段对齐 formatter._env_html_item：risk_note 缺省回退 factual_boundary。
+    正文 fallback：summary → analysis → factual_boundary（对齐 formatter 的
+    render_environment_telegram_alert_brief）。AI 失败/返回空时 summary、analysis 为空，
+    factual_boundary 为程序常量始终有值，保证 ai-body 不缺失。
     """
     topic = _e(item.get("topic", ""))
-    summary = _e(item.get("summary", ""))
+    body = (
+        item.get("summary") or item.get("analysis") or item.get("factual_boundary") or ""
+    ).strip()
     risk = item.get("risk_note") or item.get("factual_boundary")
     layers = item.get("source_layers", "")
     platforms = item.get("platforms", "")
@@ -146,7 +150,7 @@ def _nl_ai_item_compact(item: Dict[str, Any]) -> str:
     meta = " · ".join(meta_parts)
 
     meta_html = f'<div class="ai-meta">{meta}</div>' if meta else ""
-    body_html = f'<div class="ai-body">{summary}</div>' if summary else ""
+    body_html = f'<div class="ai-body">{_e(body)}</div>' if body else ""
     risk_html = f'<div class="ai-risk">{_e(risk)}</div>' if risk else ""
 
     return (
