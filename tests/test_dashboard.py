@@ -109,20 +109,24 @@ class TestRenderEnvironment(unittest.TestCase):
         self.assertIn("<style>", self.html)  # 内联 CSS
         self.assertNotIn("<script", self.html)  # 无外部脚本引用
 
-    def test_has_radar_overview_and_link(self):
+    def test_lead_and_signal_section(self):
+        # newsletter 盘面：lead 异常计数 + 异常信号区 + 已抑制脚注 + 生成时间。
+        # anomaly = cross_layer(1)+high_heat(1)+silence_gap(1)+chinese_only(0) = 3
+        # suppressed = background_count(2) + sentiment_heavy(1) = 3
         self.assertIn("当前盘面", self.html)
-        self.assertIn("信号密度", self.html)
-        self.assertIn("层级覆盖", self.html)
-        self.assertIn("异常 3", self.html)
+        self.assertIn("个异常信号", self.html)
+        self.assertIn(">3<", self.html)  # lead 异常数
+        self.assertIn("异常信号", self.html)  # sec-label
         self.assertIn("已抑制 3", self.html)
-        self.assertIn("今日 D 层独热为主", self.html)  # overview
-        self.assertIn('href="full.html"', self.html)
         self.assertIn("2026-06-04 15:30", self.html)  # 生成时间
+        self.assertNotIn('href="full.html"', self.html)  # current 盘面无完整报告链接
 
     def test_section_cards_present(self):
-        self.assertIn("跨层呼应", self.html)
-        self.assertIn("高热待核实", self.html)
+        # 分类标签 + topic（不再用旧卡片标题"跨层呼应"）
+        self.assertIn("跨层", self.html)
+        self.assertIn("高热", self.html)
         self.assertIn("某跨层事件", self.html)
+        self.assertIn("高热待核实事件", self.html)
 
     def test_not_filtered_by_notify_labels(self):
         # silence_gap 不在默认 notify_labels（cross_layer/high_heat/chinese_only），
@@ -138,19 +142,63 @@ class TestRenderEnvironment(unittest.TestCase):
         self.assertNotIn("https://", self.html)
         self.assertNotIn("http://", self.html)
 
+    def test_hotlist_and_rss_tracking(self):
+        # 热榜/RSS 追踪区：公开榜单信息（标题/来源/排名），无 URL。
+        # 排名取 ranks 历史最小值（最高位次）：min([3,2,1]) = 1。
+        stats = [
+            {
+                "word": "关税供应链",
+                "count": 3,
+                "titles": [
+                    {
+                        "title": "某热榜代表标题",
+                        "source_name": "微博热搜",
+                        "ranks": [3, 2, 1],
+                        "is_new": True,
+                        "url": SECRET_URL,  # 不应出现在盘面页
+                    }
+                ],
+            }
+        ]
+        rss = [
+            {
+                "word": "地缘政治",
+                "titles": [
+                    {
+                        "title": "某 RSS 代表标题",
+                        "source_name": "Reuters",
+                        "time_display": "14:30",
+                    }
+                ],
+            }
+        ]
+        html = DASH.render_current_dashboard_html(
+            make_env_result(), META, NOW, mode="current", stats=stats, rss_items=rss
+        )
+        self.assertIn("关税供应链", html)
+        self.assertIn("某热榜代表标题", html)
+        self.assertIn("微博热搜", html)
+        self.assertIn("#1", html)  # min(ranks)
+        self.assertIn("新", html)  # is_new 徽章
+        self.assertIn("某 RSS 代表标题", html)
+        self.assertIn("Reuters", html)
+        # 追踪区不得泄漏原始 URL
+        self.assertNotIn(SECRET_URL, html)
+        self.assertNotIn("https://", html)
+
 
 class TestRenderDegraded(unittest.TestCase):
     def test_none_ai_analysis(self):
         html = DASH.render_current_dashboard_html(None, META, NOW, mode="current")
         self.assertIn("<!DOCTYPE html>", html)
-        self.assertIn('href="full.html"', html)
-        self.assertIn("12", html)  # hotlist_total 计数透出
+        self.assertIn("当前盘面", html)
+        self.assertIn("未生成信息环境监测盘面", html)  # 降级提示
 
     def test_classic_style(self):
         classic = AIAnalysisResult(report_style="classic", success=True)
         html = DASH.render_current_dashboard_html(classic, META, NOW, mode="daily")
         self.assertIn("每日盘面", html)
-        self.assertIn('href="full.html"', html)
+        self.assertIn("未生成信息环境监测盘面", html)  # 非 environment 降级
 
     def test_daily_title(self):
         html = DASH.render_current_dashboard_html(

@@ -900,30 +900,34 @@ class NewsAnalyzer:
                 "rss_source_total": self._rss_source_total,
                 "rss_source_failed": self._rss_source_failed,
             }
-            html_file = self.ctx.generate_html(
-                stats,
-                total_titles,
-                failed_ids=failed_ids,
-                new_titles=new_titles,
-                id_to_name=id_to_name,
-                mode=mode,
-                update_info=self.update_info if self.ctx.config["SHOW_VERSION_UPDATE"] else None,
-                rss_items=rss_items,
-                rss_new_items=rss_new_items,
-                ai_analysis=html_ai,
-                standalone_data=html_standalone,
-                frequency_file=self.frequency_file,
-                report_metadata=report_metadata,
-            )
-
-            # 生成发布根盘面页（与通知/alert 无关：每次运行都刷新对应 group）
-            # 有意置于 HTML 块内：盘面页链接 public/{group}/full.html，仅当 HTML 生成时才存在，
-            # 解耦会产生死链。如需"无 HTML 也出盘面"，应另加独立开关而非简单外移。
-            self.ctx.generate_dashboard(
-                mode=mode,
-                ai_analysis=html_ai,
-                report_metadata=report_metadata,
-            )
+            # 路由分流（见推送架构）：current 与 daily 是互斥的运行模式。
+            #   daily               → 完整报告 full.html（归档 + latest + TG 附件源）
+            #   current/incremental → 轻量盘面 dashboard（不写 full.html）
+            # landing（public/index.html）由两条路径各自幂等维护。
+            if mode == "daily":
+                html_file = self.ctx.generate_html(
+                    stats,
+                    total_titles,
+                    failed_ids=failed_ids,
+                    new_titles=new_titles,
+                    id_to_name=id_to_name,
+                    mode=mode,
+                    update_info=self.update_info if self.ctx.config["SHOW_VERSION_UPDATE"] else None,
+                    rss_items=rss_items,
+                    rss_new_items=rss_new_items,
+                    ai_analysis=html_ai,
+                    standalone_data=html_standalone,
+                    frequency_file=self.frequency_file,
+                    report_metadata=report_metadata,
+                )
+            else:
+                self.ctx.generate_dashboard(
+                    mode=mode,
+                    ai_analysis=html_ai,
+                    report_metadata=report_metadata,
+                    stats=stats,
+                    rss_items=rss_items,
+                )
 
         return stats, html_file, ai_result, rss_items
 

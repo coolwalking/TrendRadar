@@ -33,6 +33,7 @@ from trendradar.report import (
     render_html_content,
 )
 from trendradar.report.dashboard import write_dashboard
+from trendradar.report.newsletter import render_newsletter_report
 from trendradar.notification import (
     render_feishu_content,
     render_dingtalk_content,
@@ -353,6 +354,8 @@ class AppContext:
         ai_analysis: Optional[Any] = None,
         report_metadata: Optional[Dict] = None,
         output_dir: str = "output",
+        stats: Optional[List[Dict]] = None,
+        rss_items: Optional[List[Dict]] = None,
     ) -> str:
         """
         生成发布根的轻量盘面页与摘要缓存。
@@ -372,6 +375,8 @@ class AppContext:
             ai_analysis=ai_analysis,
             report_metadata=report_metadata,
             generated_at=self.get_time(),
+            stats=stats,
+            rss_items=rss_items,
         )
 
     def render_html(
@@ -385,7 +390,24 @@ class AppContext:
         ai_analysis: Optional[Any] = None,
         standalone_data: Optional[Dict] = None,
     ) -> str:
-        """渲染HTML内容"""
+        """渲染HTML内容。
+
+        environment 风格走 newsletter 渲染器；classic 走旧版 render_html_content。
+        """
+        if (
+            ai_analysis is not None
+            and getattr(ai_analysis, "report_style", "") == "environment"
+        ):
+            return render_newsletter_report(
+                report_data,
+                total_titles,
+                mode,
+                update_info,
+                rss_items=rss_items,
+                rss_new_items=rss_new_items,
+                ai_analysis=ai_analysis,
+                get_time_func=self.get_time,
+            )
         return render_html_content(
             report_data=report_data,
             total_titles=total_titles,
