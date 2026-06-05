@@ -55,6 +55,9 @@ for _name in [
 senders_stub.resolve_report_attachment_path = (
     lambda output_dir, mode, report_kind="full": "path"
 )
+senders_stub.resolve_attachment_kind_for_event = (
+    lambda cfg, event_name: "full"
+)
 
 
 def _should_apply_realtime_alert_gate(report_style, mode, manual_trigger=False):

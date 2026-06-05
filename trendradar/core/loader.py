@@ -383,13 +383,21 @@ def _load_telegram_attachments_config(config_data: Dict) -> Dict:
 
     附件是文本推送成功后的可选增强：
       - 附件失败**永远不会**影响文本推送结果（failure_behavior 只控制日志强度）；
-      - 第一版只发送发布根的 public/{current|daily}/full.html，
-        不发送 state.json / index.html / db / log / alert_state / secrets。
+      - 只发送发布根的单文件 HTML，不发送 state.json / db / log / alert_state / secrets；
+      - dashboard 作为 Telegram 单文件附件时，内部 full.html 相对链接可能不可用，
+        这是当前已知限制，本配置加载器不改 HTML 内容。
 
     attach_on 取值（均要求 environment 风格，classic 一律不附附件）：
       - realtime_alert：environment + current/incremental 且本轮真的推了 alert
       - daily_digest ：environment + daily（每日简报）；指 environment 每日简报，
         不是所有 mode=daily。
+      - 旧写法 realtime / daily 会分别归一化为 realtime_alert / daily_digest。
+
+    report_kind_by_event 支持：
+      - realtime_alert：默认 dashboard
+      - daily_digest ：默认 full
+      显式配置会覆盖对应事件默认值。legacy/deprecated report_kind 仅保留兼容，
+      不再覆盖 realtime_alert / daily_digest 的内置默认策略。
     """
     raw = config_data.get("telegram_attachments", {}) or {}
 
@@ -400,12 +408,26 @@ def _load_telegram_attachments_config(config_data: Dict) -> Dict:
     if not isinstance(attach_on_raw, (list, tuple)):
         attach_on_raw = ["realtime_alert", "daily_digest"]
     allowed = {"realtime_alert", "daily_digest"}
-    attach_on = [str(item).strip() for item in attach_on_raw if str(item).strip() in allowed]
+    legacy_attach_on = {"realtime": "realtime_alert", "daily": "daily_digest"}
+    attach_on = []
+    for item in attach_on_raw:
+        name = str(item).strip()
+        name = legacy_attach_on.get(name, name)
+        if name in allowed and name not in attach_on:
+            attach_on.append(name)
 
     report_kind = str(raw.get("report_kind", "full")).strip().lower()
-    if report_kind != "full":
-        # v1 仅支持 full（避免暴露 state.json/index.html）
+    allowed_report_kinds = {"dashboard", "full"}
+    if report_kind not in allowed_report_kinds:
         report_kind = "full"
+
+    report_kind_by_event = {}
+    raw_policy = raw.get("report_kind_by_event")
+    if isinstance(raw_policy, dict):
+        for event_name in ("realtime_alert", "daily_digest"):
+            kind = str(raw_policy.get(event_name, "")).strip().lower()
+            if kind in allowed_report_kinds:
+                report_kind_by_event[event_name] = kind
 
     raw_max_mb = raw.get("max_file_mb", 8)
     try:
@@ -420,6 +442,7 @@ def _load_telegram_attachments_config(config_data: Dict) -> Dict:
     return {
         "ENABLED": enabled,
         "ATTACH_ON": attach_on,
+        "REPORT_KIND_BY_EVENT": report_kind_by_event,
         "REPORT_KIND": report_kind,
         "MAX_FILE_MB": max_file_mb,
         "FAILURE_BEHAVIOR": failure_behavior,
