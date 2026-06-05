@@ -135,7 +135,7 @@ def _nl_ai_item_compact(item: Dict[str, Any]) -> str:
     body = (
         item.get("summary") or item.get("analysis") or item.get("factual_boundary") or ""
     ).strip()
-    risk = item.get("risk_note") or item.get("factual_boundary")
+    risk = (item.get("risk_note") or item.get("factual_boundary") or "").strip()
     layers = item.get("source_layers", "")
     platforms = item.get("platforms", "")
     heat = item.get("highest_heat", "")
@@ -151,7 +151,7 @@ def _nl_ai_item_compact(item: Dict[str, Any]) -> str:
 
     meta_html = f'<div class="ai-meta">{meta}</div>' if meta else ""
     body_html = f'<div class="ai-body">{_e(body)}</div>' if body else ""
-    risk_html = f'<div class="ai-risk">{_e(risk)}</div>' if risk else ""
+    risk_html = f'<div class="ai-risk">{_e(risk)}</div>' if risk and risk != body else ""
 
     return (
         f'<div class="ai-item">'
