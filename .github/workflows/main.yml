@@ -46,7 +46,7 @@ concurrency:
 permissions:
   contents: read
   actions: write
-  workflows: write # 新增这一行，解决404权限问题
+  workflow: write # 新增这一行，解决404权限问题
 
 jobs:
   crawl:
